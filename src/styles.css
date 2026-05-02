@@ -1,0 +1,201 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+
+  --color-obsidian: var(--obsidian);
+  --color-carbon: var(--carbon);
+  --color-graphite: var(--graphite);
+  --color-optic: var(--optic);
+  --color-optic-ink: var(--optic-ink);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+
+  --color-surface-clay: var(--surface-clay);
+  --color-surface-hard: var(--surface-hard);
+  --color-surface-carpet: var(--surface-carpet);
+
+  --font-display: "Rajdhani", sans-serif;
+  --font-body: "Outfit", sans-serif;
+}
+
+/* ========== DARK (default) ========== */
+:root,
+.dark {
+  --radius: 0.875rem;
+
+  --obsidian: oklch(0.08 0 0);
+  --carbon: oklch(0.13 0 0);
+  --graphite: oklch(0.18 0 0);
+  --optic: oklch(0.95 0.22 115);
+  --optic-ink: oklch(0.95 0.22 115); /* same as --optic in dark */
+
+  /* Saturated emerald, distinct from neon-yellow optic */
+  --success: oklch(0.7 0.18 155);
+  --success-foreground: oklch(0.1 0 0);
+
+  --surface-clay: oklch(0.62 0.18 35);
+  --surface-hard: oklch(0.5 0.2 255);
+  --surface-carpet: oklch(0.55 0.16 145);
+
+  --background: var(--obsidian);
+  --foreground: oklch(0.98 0 0);
+  --card: var(--carbon);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: var(--carbon);
+  --popover-foreground: oklch(0.98 0 0);
+  --primary: var(--optic);
+  --primary-foreground: oklch(0.1 0 0);
+  --secondary: var(--graphite);
+  --secondary-foreground: oklch(0.98 0 0);
+  --muted: var(--graphite);
+  --muted-foreground: oklch(0.65 0 0);
+  --accent: var(--graphite);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(1 0 0 / 0.18);
+  --input: oklch(1 0 0 / 0.22);
+  --ring: var(--optic);
+}
+
+/* ========== LIGHT ========== */
+.light {
+  --radius: 0.875rem;
+
+  /* Cool light gray surfaces */
+  --obsidian: oklch(0.96 0.005 250);   /* page bg */
+  --carbon: oklch(1 0 0);              /* cards: pure white */
+  --graphite: oklch(0.93 0.005 250);   /* subtle chips */
+  /* Deep saturated forest/kelly green for high contrast against white */
+  --optic: oklch(0.48 0.18 145);
+  --optic-ink: oklch(0.42 0.18 145);
+
+  /* Emerald in light mode too — slightly darker for contrast on white */
+  --success: oklch(0.55 0.18 155);
+  --success-foreground: oklch(0.98 0 0);
+
+  --surface-clay: oklch(0.6 0.2 35);
+  --surface-hard: oklch(0.5 0.22 255);
+  --surface-carpet: oklch(0.5 0.18 145);
+
+  --background: var(--obsidian);
+  --foreground: oklch(0.18 0.01 250);
+  --card: var(--carbon);
+  --card-foreground: oklch(0.18 0.01 250);
+  --popover: var(--carbon);
+  --popover-foreground: oklch(0.18 0.01 250);
+  --primary: var(--optic);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: var(--graphite);
+  --secondary-foreground: oklch(0.18 0.01 250);
+  --muted: var(--graphite);
+  --muted-foreground: oklch(0.45 0.01 250);
+  --accent: var(--graphite);
+  --accent-foreground: oklch(0.18 0.01 250);
+  --destructive: oklch(0.58 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.18 0.01 250 / 0.22);
+  --input: oklch(0.18 0.01 250 / 0.28);
+  --ring: var(--optic);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html,
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  html {
+    /* Prevent horizontal jump when route changes hide/show scrollbar */
+    scrollbar-gutter: stable;
+  }
+  html, body, #root {
+    min-height: 100dvh;
+  }
+  /* Globally suppress glow/box-shadow on focus/active interactive elements */
+  button:focus,
+  button:focus-visible,
+  [role="tab"]:focus,
+  [role="tab"]:focus-visible,
+  input:focus,
+  input:focus-visible,
+  select:focus,
+  select:focus-visible,
+  textarea:focus,
+  textarea:focus-visible {
+    box-shadow: none !important;
+  }
+  ::selection {
+    background-color: var(--optic);
+    color: black;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@utility safe-pb {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility safe-pt {
+  padding-top: env(safe-area-inset-top);
+}
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+/* Validation shake for invalid score entry */
+@keyframes lov-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+.animate-shake {
+  animation: lov-shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+/* Interclub badge color (purple) */
+:root, .dark, .light {
+  --ic-purple: oklch(0.55 0.22 295);
+  --star-yellow: oklch(0.85 0.17 90);
+}
