@@ -81,6 +81,10 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
   const [opponentId, setOpponentId] = useState<string>(
     editing?.score?.partnerId ?? editing?.score?.opponentId ?? "",
   );
+  // Singles-training only: additional partners (rotating hitting groups).
+  const [extraPartnerIds, setExtraPartnerIds] = useState<string[]>(
+    editing?.score?.partnerIds ?? [],
+  );
   const [newOpponent, setNewOpponent] = useState("");
   const [opponentsLabel, setOpponentsLabel] = useState(editing?.score?.opponentsLabel ?? "");
   const [rating, setRating] = useState<OpponentRating | "">(editing?.score?.rating ?? "");
@@ -380,17 +384,28 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
               meRating: showRating && myClassification ? (myClassification as OpponentRating) : undefined,
               sets: sets.length > 0 ? sets : [{ me: null, opp: null }],
             }
-          : {
-              opponentId: player?.id,
-              opponent:
-                player?.name ??
-                ghostName ??
-                players.find((p) => p.id === opponentId)?.name ??
-                "",
-              rating: opponentRating,
-              meRating: showRating && myClassification ? (myClassification as OpponentRating) : undefined,
-              sets: sets.length > 0 ? sets : [{ me: null, opp: null }],
-            }
+          : (() => {
+              const cleanExtraIds =
+                mode === "training" && !isDoubles
+                  ? extraPartnerIds.filter((id) => id && id !== player?.id)
+                  : [];
+              const cleanExtraNames = cleanExtraIds
+                .map((id) => players.find((p) => p.id === id)?.name)
+                .filter((n): n is string => !!n);
+              return {
+                opponentId: player?.id,
+                opponent:
+                  player?.name ??
+                  ghostName ??
+                  players.find((p) => p.id === opponentId)?.name ??
+                  "",
+                rating: opponentRating,
+                meRating: showRating && myClassification ? (myClassification as OpponentRating) : undefined,
+                sets: sets.length > 0 ? sets : [{ me: null, opp: null }],
+                partnerIds: cleanExtraIds.length > 0 ? cleanExtraIds : undefined,
+                partnerNames: cleanExtraNames.length > 0 ? cleanExtraNames : undefined,
+              };
+            })()
         : undefined;
 
       const trimmedLocation = location.trim();
@@ -742,6 +757,58 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
               </select>
             )}
           </div>
+
+          {mode === "training" && !isDoubles && !isCasual && (
+            <div className="flex flex-col gap-2 mt-2">
+              {extraPartnerIds.map((pid, idx) => {
+                const taken = new Set<string>([
+                  opponentId,
+                  ...extraPartnerIds.filter((_, i) => i !== idx),
+                ]);
+                return (
+                  <div key={idx} className="flex gap-2">
+                    <select
+                      value={pid}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setExtraPartnerIds((prev) =>
+                          prev.map((x, i) => (i === idx ? v : x)),
+                        );
+                      }}
+                      className={cn(inputClass, "flex-1")}
+                      aria-label={`Additional partner ${idx + 2}`}
+                    >
+                      <option value="">Add a Partner</option>
+                      {visiblePlayers
+                        .filter((p) => !taken.has(p.id) || p.id === pid)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExtraPartnerIds((prev) => prev.filter((_, i) => i !== idx))
+                      }
+                      className="size-11 rounded-xl border-2 border-border text-muted-foreground hover:text-destructive hover:border-destructive transition flex items-center justify-center shrink-0"
+                      aria-label="Remove partner"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setExtraPartnerIds((prev) => [...prev, ""])}
+                className="self-start text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground flex items-center gap-1.5"
+              >
+                <Plus className="size-3.5" /> Add another partner
+              </button>
+            </div>
+          )}
         </Section>
       )}
 

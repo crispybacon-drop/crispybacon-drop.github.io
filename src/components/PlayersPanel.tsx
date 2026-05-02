@@ -225,7 +225,9 @@ export function PlayersPanel({ embedded = false, onOpenGamesForPlayer, editMode 
               (s.score.partnerId === p.id ||
                 s.score.opponentId === p.id ||
                 s.score.partnerName === p.name ||
-                s.score.opponent === p.name),
+                s.score.opponent === p.name ||
+                (s.score.partnerIds?.includes(p.id) ?? false) ||
+                (s.score.partnerNames?.includes(p.name) ?? false)),
           );
           let w = 0, l = 0;
           for (const s of friendlies) {
@@ -383,7 +385,15 @@ function SortablePlayerRow({
       )}
     >
       {isEditing ? (
-        <div className="flex flex-col gap-2.5">
+        <div
+          className="flex flex-col gap-2.5"
+          onBlur={(e) => {
+            // Only save when focus leaves the entire edit container
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              onSave();
+            }
+          }}
+        >
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative size-9 rounded-full bg-graphite flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
               {p.avatarDataUrl ? (
@@ -396,7 +406,6 @@ function SortablePlayerRow({
               autoFocus
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
-              onBlur={onSave}
               onKeyDown={(e) => {
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                 if (e.key === "Escape") onCancelEdit();
@@ -460,7 +469,7 @@ function SortablePlayerRow({
               </div>
               {!editMode && (
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  {friendlies} {friendlies === 1 ? "friendly" : "friendlies"} ·{" "}
+                  {friendlies} {friendlies === 1 ? "session" : "sessions"} ·{" "}
                   <span className={cn("font-semibold", wlClass(w, l))}>{w}W / {l}L</span>
                 </div>
               )}
@@ -556,6 +565,9 @@ function H2HView({
         .filter((s) => {
           // Match opponent linkage
           if (s.score && (s.score.opponentId === player.id || s.score.opponent === player.name)) return true;
+          // Singles-training extra partners
+          if (s.score?.partnerIds?.includes(player.id)) return true;
+          if (s.score?.partnerNames?.includes(player.name)) return true;
           // Training partner linkage via mini-games
           if (s.customResults?.some((r) => r.partnerId === player.id || r.partnerName === player.name)) return true;
           return false;

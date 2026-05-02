@@ -31,6 +31,10 @@ export interface Score {
   partnerName?: string;
   /** Doubles: free-text label for the opposing team. Not linked to Player records. */
   opponentsLabel?: string;
+  /** Singles training: additional partner Player.ids beyond the primary one (rotating hitting groups). */
+  partnerIds?: string[];
+  /** Singles training: extra partner display names aligned with partnerIds. */
+  partnerNames?: string[];
 }
 
 export interface CustomGameResult {
