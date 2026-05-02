@@ -35,8 +35,14 @@ jobs:
       - name: Build the app
         run: npm run build
 
-      - name: Create 404 fallback
-        run: cp dist/index.html dist/404.html
+      - name: Prepare static HTML
+        run: |
+          cp index.html dist/client/index.html
+          JS_FILE=$(ls dist/client/assets/index-*.js | head -n 1 | xargs basename)
+          CSS_FILE=$(ls dist/client/assets/styles-*.css | head -n 1 | xargs basename)
+          sed -i "s|/src/index.tsx|/assets/$JS_FILE|g" dist/client/index.html
+          sed -i "s|</head>|<link rel=\"stylesheet\" href=\"/assets/$CSS_FILE\">\n</head>|g" dist/client/index.html
+          cp dist/client/index.html dist/client/404.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -44,7 +50,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
+          path: './dist/client'
 
       - name: Deploy to GitHub Pages
         id: deployment
