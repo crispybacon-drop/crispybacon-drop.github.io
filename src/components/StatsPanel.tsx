@@ -574,35 +574,49 @@ function WeeklyVolume({ weeks, maxHours, title }: { weeks: { label: string; hour
         {weeks.map((w, i) => {
           const pct = safeMax > 0 ? (w.hours / safeMax) * 100 : 0;
           return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1.5 h-full">
-              <div className="w-full flex-1 flex items-end">
-                <div
-                  className="w-full rounded-md bg-optic transition-all"
-                  style={{
-                    height: `${pct}%`,
-                    minHeight: w.hours > 0 ? 4 : 0,
-                  }}
-                />
-              </div>
-              <div className="text-[9px] font-bold tabular-nums text-muted-foreground">{w.hours > 0 ? formatHours(w.hours) : "0h"}</div>
+            <div key={i} className="flex-1 flex items-end h-full">
+              <div
+                className="w-full rounded-md bg-optic transition-all"
+                style={{
+                  height: `${pct}%`,
+                  minHeight: w.hours > 0 ? 4 : 0,
+                }}
+              />
             </div>
           );
         })}
       </div>
-      <div className="flex gap-1.5 -mt-2">
+      <div className="flex gap-1.5">
         {weeks.map((w, i) => {
           const prev = i > 0 ? weeks[i - 1] : null;
           const isMonthStart = !prev || prev.month !== w.month || prev.year !== w.year;
+          const showMonth = isMonthStart;
+          const totalMin = Math.round(w.hours * 60);
+          const h = Math.floor(totalMin / 60);
+          const m = totalMin % 60;
+          // Collision: if month label needs to show and minutes exist, round to whole hours
+          const collide = showMonth && m > 0;
+          const hourText = w.hours > 0
+            ? (collide ? `${Math.round(w.hours)}h` : `${h}h`)
+            : "0h";
+          const minuteText = !collide && w.hours > 0 && m > 0 ? `${m}m` : "";
           return (
-            <div key={i} className="flex-1 relative h-3">
+            <div key={i} className="flex-1 relative flex flex-col items-center">
               {isMonthStart && i > 0 && (
-                <div className="absolute -left-0.5 top-0 bottom-0 w-px bg-border" />
+                <div className="absolute -left-0.5 top-0 h-3 w-px bg-border" />
               )}
-              {isMonthStart && (
-                <div className="absolute left-1 top-0 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                  {w.monthShort}
-                </div>
-              )}
+              {/* Hour line — fixed height baseline */}
+              <div className="h-3 flex items-start text-[9px] font-bold tabular-nums text-muted-foreground leading-none">
+                {hourText}
+              </div>
+              {/* Second line: minutes OR month (collision rule prioritizes month) */}
+              <div className="h-3 flex items-start text-[9px] font-bold tabular-nums text-muted-foreground leading-none">
+                {showMonth ? (
+                  <span className="uppercase tracking-wider">{w.monthShort}</span>
+                ) : minuteText ? (
+                  <span>{minuteText}</span>
+                ) : null}
+              </div>
             </div>
           );
         })}
@@ -965,16 +979,19 @@ function TimeOfDayHeatmap({ sessions }: { sessions: Session[] }) {
           const intensity = peak > 0 ? minutes / peak : 0;
           let bg = "bg-muted";
           if (minutes > 0) {
-            if (intensity > 0.9) bg = "bg-optic";
-            else if (intensity > 0.8) bg = "bg-optic/90";
-            else if (intensity > 0.7) bg = "bg-optic/80";
-            else if (intensity > 0.6) bg = "bg-optic/70";
-            else if (intensity > 0.5) bg = "bg-optic/60";
-            else if (intensity > 0.4) bg = "bg-optic/50";
-            else if (intensity > 0.3) bg = "bg-optic/40";
-            else if (intensity > 0.2) bg = "bg-optic/30";
-            else if (intensity > 0.1) bg = "bg-optic/20";
-            else bg = "bg-optic/15";
+            if (intensity > 0.93) bg = "bg-optic";
+            else if (intensity > 0.86) bg = "bg-optic/95";
+            else if (intensity > 0.78) bg = "bg-optic/90";
+            else if (intensity > 0.70) bg = "bg-optic/80";
+            else if (intensity > 0.62) bg = "bg-optic/70";
+            else if (intensity > 0.54) bg = "bg-optic/60";
+            else if (intensity > 0.46) bg = "bg-optic/50";
+            else if (intensity > 0.38) bg = "bg-optic/40";
+            else if (intensity > 0.30) bg = "bg-optic/35";
+            else if (intensity > 0.22) bg = "bg-optic/28";
+            else if (intensity > 0.15) bg = "bg-optic/22";
+            else if (intensity > 0.08) bg = "bg-optic/16";
+            else bg = "bg-optic/10";
           }
           const totalH = Math.floor(minutes / 60);
           const totalM = Math.round(minutes % 60);

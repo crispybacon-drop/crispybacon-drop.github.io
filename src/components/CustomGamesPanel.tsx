@@ -9,7 +9,18 @@ import { Scoreboard } from "./Scoreboard";
 import { useMeLabel } from "@/lib/identity";
 import { ConfirmModal, AlertModal } from "./ConfirmModal";
 import { withFriendlyResults, withFriendlyGame, FRIENDLY_GAME_ID } from "@/lib/friendly";
-import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine, Label } from "recharts";
+import { sessionIncludesPlayer } from "@/lib/participants";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ReferenceLine,
+  Label,
+} from "recharts";
 import {
   DndContext,
   closestCenter,
@@ -44,7 +55,13 @@ function sortGames(games: CustomGame[]): CustomGame[] {
   });
 }
 
-export function CustomGamesPanel({ initialPartnerId = null, initialGameId = null, onClearFilter, onClearGameId, onGameDetailBack }: PanelProps) {
+export function CustomGamesPanel({
+  initialPartnerId = null,
+  initialGameId = null,
+  onClearFilter,
+  onClearGameId,
+  onGameDetailBack,
+}: PanelProps) {
   const [games, setGames] = useLocalStorage<CustomGame[]>(STORAGE_KEYS.customGames, []);
   const [sessions] = useLocalStorage<Session[]>(STORAGE_KEYS.sessions, []);
   const [players] = useLocalStorage<Player[]>(STORAGE_KEYS.players, []);
@@ -113,11 +130,17 @@ export function CustomGamesPanel({ initialPartnerId = null, initialGameId = null
     if (!editingGame) return;
     const trimmed = next.name.trim();
     if (!trimmed) return;
-    if (games.some((g) => g.id !== editingGame.id && g.name.toLowerCase() === trimmed.toLowerCase())) {
+    if (
+      games.some((g) => g.id !== editingGame.id && g.name.toLowerCase() === trimmed.toLowerCase())
+    ) {
       setAlertMsg("Another game already uses that name.");
       return;
     }
-    setGames(games.map((g) => (g.id === editingGame.id ? { ...g, name: trimmed, scoringMode: next.scoringMode } : g)));
+    setGames(
+      games.map((g) =>
+        g.id === editingGame.id ? { ...g, name: trimmed, scoringMode: next.scoringMode } : g,
+      ),
+    );
     setEditingGame(null);
   }
 
@@ -136,14 +159,14 @@ export function CustomGamesPanel({ initialPartnerId = null, initialGameId = null
     setGames([...withOrder, ...games.filter((g) => !known.has(g.id))]);
   }
 
-  const filterPlayer = partnerFilter ? players.find((p) => p.id === partnerFilter) ?? null : null;
+  const filterPlayer = partnerFilter ? (players.find((p) => p.id === partnerFilter) ?? null) : null;
 
   function matchesFilter(s: Session, r: { partnerId?: string; partnerName?: string }) {
     if (!partnerFilter || !filterPlayer) return true;
     return (
       r.partnerId === filterPlayer.id ||
       r.partnerName === filterPlayer.name ||
-      (!r.partnerId && !r.partnerName && (s.score?.opponentId === filterPlayer.id || s.score?.opponent === filterPlayer.name))
+      (!r.partnerId && !r.partnerName && sessionIncludesPlayer(s, filterPlayer))
     );
   }
 
@@ -244,8 +267,14 @@ export function CustomGamesPanel({ initialPartnerId = null, initialGameId = null
       </div>
 
       {pendingMode && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setPendingMode(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm bg-card border border-border rounded-3xl p-6 flex flex-col gap-4">
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+          onClick={() => setPendingMode(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-card border border-border rounded-3xl p-6 flex flex-col gap-4"
+          >
             <div>
               <h3 className="text-lg font-bold">Choose scoring mode</h3>
               <p className="text-xs text-muted-foreground mt-1">For "{pendingMode.name}"</p>
@@ -256,17 +285,26 @@ export function CustomGamesPanel({ initialPartnerId = null, initialGameId = null
                 className="text-left p-4 rounded-2xl border-2 border-border hover:border-optic transition"
               >
                 <div className="text-sm font-bold">Match Logic</div>
-                <div className="text-xs text-muted-foreground mt-0.5">W/L/D per set, sets tally up.</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  W/L/D per set, sets tally up.
+                </div>
               </button>
               <button
                 onClick={() => finalizeAdd("cumulative")}
                 className="text-left p-4 rounded-2xl border-2 border-border hover:border-optic transition"
               >
                 <div className="text-sm font-bold">Cumulative</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Sum numbers (e.g. total Aces). Single input per session.</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Sum numbers (e.g. total Aces). Single input per session.
+                </div>
               </button>
             </div>
-            <button onClick={() => setPendingMode(null)} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+            <button
+              onClick={() => setPendingMode(null)}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
@@ -305,11 +343,7 @@ export function CustomGamesPanel({ initialPartnerId = null, initialGameId = null
       )}
 
       {editingGame && (
-        <EditGameModal
-          game={editingGame}
-          onClose={() => setEditingGame(null)}
-          onSave={saveEdit}
-        />
+        <EditGameModal game={editingGame} onClose={() => setEditingGame(null)} onSave={saveEdit} />
       )}
 
       <ConfirmModal
@@ -380,7 +414,10 @@ function SortableGameRow({
       )}
     >
       {isVirtual ? (
-        <div className="size-8 rounded-md flex items-center justify-center text-[8px] font-black uppercase tracking-wider text-[var(--ic-purple)]" aria-hidden>
+        <div
+          className="size-8 rounded-md flex items-center justify-center text-[8px] font-black uppercase tracking-wider text-[var(--ic-purple)]"
+          aria-hidden
+        >
           AUTO
         </div>
       ) : (
@@ -473,7 +510,9 @@ function EditGameModal({
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Name</label>
+          <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            Name
+          </label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -482,12 +521,16 @@ function EditGameModal({
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Scoring Mode</label>
+          <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            Scoring Mode
+          </label>
           <div className="flex gap-2 p-1 bg-graphite/40 rounded-full">
-            {([
-              { id: "match", label: "Match Logic" },
-              { id: "cumulative", label: "Cumulative" },
-            ] as { id: GameScoringMode; label: string }[]).map((opt) => (
+            {(
+              [
+                { id: "match", label: "Match Logic" },
+                { id: "cumulative", label: "Cumulative" },
+              ] as { id: GameScoringMode; label: string }[]
+            ).map((opt) => (
               <button
                 key={opt.id}
                 type="button"
@@ -547,7 +590,7 @@ function GameHistoryView({
           const ok =
             r.partnerId === partnerFilter.id ||
             r.partnerName === partnerFilter.name ||
-            (!r.partnerId && !r.partnerName && (s.score?.opponentId === partnerFilter.id || s.score?.opponent === partnerFilter.name));
+            (!r.partnerId && !r.partnerName && sessionIncludesPlayer(s, partnerFilter));
           if (!ok) continue;
         }
         // Variable safety: prefer mini-game partner, fall back to session opponent/partner
@@ -600,9 +643,18 @@ function GameHistoryView({
         </div>
       )}
 
-      <LongestStreakBadge entries={entries} meLabel={meLabelGlobal} partnerLabel={partnerFilter?.name ?? "Partner"} />
+      <LongestStreakBadge
+        entries={entries}
+        meLabel={meLabelGlobal}
+        partnerLabel={partnerFilter?.name ?? "Partner"}
+      />
 
-      <GameHistoryTrend game={game} entries={entries} meLabel={meLabelGlobal} partnerLabel={partnerFilter?.name ?? "Partner"} />
+      <GameHistoryTrend
+        game={game}
+        entries={entries}
+        meLabel={meLabelGlobal}
+        partnerLabel={partnerFilter?.name ?? "Partner"}
+      />
 
       {entries.length === 0 ? (
         <div className="bg-card border border-dashed border-border rounded-2xl p-8 text-center text-sm text-muted-foreground">
@@ -621,7 +673,11 @@ function GameHistoryView({
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground tabular-nums shrink-0">
-                    {new Date(e.date).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                    {new Date(e.date).toLocaleDateString(undefined, {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
                   </div>
                   <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground truncate min-w-0 text-right">
                     vs {e.opponent}
@@ -664,17 +720,23 @@ function LongestStreakBadge({
 
     for (const [name, list] of byPartner) {
       const ordered = [...list].sort((a, b) => (a.date < b.date ? -1 : 1));
-      let me = 0, opp = 0, curMe = 0, curOpp = 0;
+      let me = 0,
+        opp = 0,
+        curMe = 0,
+        curOpp = 0;
       for (const e of ordered) {
         const o = matchOutcome(e.sets);
         if (o.result === "win") {
-          curMe += 1; curOpp = 0;
+          curMe += 1;
+          curOpp = 0;
           if (curMe > me) me = curMe;
         } else if (o.result === "loss") {
-          curOpp += 1; curMe = 0;
+          curOpp += 1;
+          curMe = 0;
           if (curOpp > opp) opp = curOpp;
         } else {
-          curMe = 0; curOpp = 0;
+          curMe = 0;
+          curOpp = 0;
         }
       }
       if (me > 0 && (!meBest || me > meBest.n)) meBest = { name, n: me };
@@ -691,7 +753,8 @@ function LongestStreakBadge({
   const meN = meBest?.n ?? 0;
   const partnerN = partnerBest?.n ?? 0;
   if (meN >= partnerN && meBest) leaders.push({ who: meLabel, vs: meBest.name, n: meBest.n });
-  if (partnerN >= meN && partnerBest) leaders.push({ who: partnerBest.name, vs: meLabel, n: partnerBest.n });
+  if (partnerN >= meN && partnerBest)
+    leaders.push({ who: partnerBest.name, vs: meLabel, n: partnerBest.n });
 
   return (
     <div className="bg-card border border-border rounded-xl px-3 py-2 flex items-center justify-between gap-3">
@@ -753,7 +816,8 @@ function GameHistoryTrend({
             opp: e.sets.reduce((sum, set) => sum + (set.opp ?? 0), 0),
           };
         }
-        let me = 0, opp = 0;
+        let me = 0,
+          opp = 0;
         for (const set of e.sets) {
           if (set.me == null || set.opp == null) continue;
           if (set.me > set.opp) me++;
@@ -770,7 +834,8 @@ function GameHistoryTrend({
   const n = points.length;
   const meanX = (n - 1) / 2;
   const meanY = points.reduce((sum, p) => sum + p.me, 0) / n;
-  let num = 0, den = 0;
+  let num = 0,
+    den = 0;
   for (let i = 0; i < n; i++) {
     num += (i - meanX) * (points[i].me - meanY);
     den += (i - meanX) ** 2;
@@ -793,21 +858,32 @@ function GameHistoryTrend({
         <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
           {isFriendly ? "Cumulative Set Lead" : "Trend"}
         </span>
-        <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-180")} />
+        <ChevronDown
+          className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-180")}
+        />
       </button>
       {open && (
         <div className="border-t border-border p-3 animate-fade-in">
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               {isFriendly ? (
-                <LineChart data={friendlyData} margin={{ top: 18, right: 20, left: 18, bottom: 24 }}>
+                <LineChart
+                  data={friendlyData}
+                  margin={{ top: 18, right: 20, left: 18, bottom: 24 }}
+                >
                   <CartesianGrid stroke="var(--border)" strokeOpacity={0.25} vertical={false} />
                   <XAxis
                     dataKey="idx"
                     tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     axisLine={false}
                     tickLine={false}
-                    label={{ value: "Cumulative Sessions", position: "insideBottom", offset: -10, fontSize: 10, fill: "var(--muted-foreground)" }}
+                    label={{
+                      value: "Cumulative Sessions",
+                      position: "insideBottom",
+                      offset: -10,
+                      fontSize: 10,
+                      fill: "var(--muted-foreground)",
+                    }}
                   />
                   <YAxis
                     domain={[-friendlyAbs, friendlyAbs]}
@@ -817,13 +893,39 @@ function GameHistoryTrend({
                     width={40}
                     allowDecimals={false}
                   >
-                    <Label value={meLabel} position="top" offset={10} fontSize={10} fontWeight={700} fill="var(--optic)" />
-                    <Label value={partnerLabel} position="bottom" offset={14} fontSize={10} fontWeight={700} fill="var(--muted-foreground)" />
+                    <Label
+                      value={meLabel}
+                      position="top"
+                      offset={10}
+                      fontSize={10}
+                      fontWeight={700}
+                      fill="var(--optic)"
+                    />
+                    <Label
+                      value={partnerLabel}
+                      position="bottom"
+                      offset={14}
+                      fontSize={10}
+                      fontWeight={700}
+                      fill="var(--muted-foreground)"
+                    />
                   </YAxis>
                   <Tooltip
-                    contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                    contentStyle={{
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      fontSize: 11,
+                    }}
                     labelFormatter={(v) => `Session ${v}`}
-                    formatter={(v: number) => [v > 0 ? `+${v} for ${meLabel}` : v < 0 ? `${v} (${partnerLabel} ahead)` : "Even", "Net Matches"]}
+                    formatter={(v: number) => [
+                      v > 0
+                        ? `+${v} for ${meLabel}`
+                        : v < 0
+                          ? `${v} (${partnerLabel} ahead)`
+                          : "Even",
+                      "Net Matches",
+                    ]}
                   />
                   <ReferenceLine y={0} stroke="var(--border)" strokeOpacity={0.7} />
                   <Line
@@ -839,12 +941,59 @@ function GameHistoryTrend({
               ) : (
                 <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke="var(--border)" strokeOpacity={0.25} vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={26} allowDecimals={false} />
-                  <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "var(--muted-foreground)" }} />
-                  <Line type="monotone" dataKey="me" name={meLabel} stroke="var(--optic)" strokeWidth={2} dot={{ r: 2.5 }} activeDot={{ r: 4 }} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="opp" name="Opp" stroke="var(--muted-foreground)" strokeWidth={1.25} strokeDasharray="3 3" dot={{ r: 1.75 }} isAnimationActive={false} />
-                  <Line type="linear" dataKey="trend" name="Trend" stroke="var(--optic)" strokeWidth={1.25} strokeDasharray="2 4" strokeOpacity={0.75} dot={false} isAnimationActive={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={26}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      fontSize: 11,
+                    }}
+                    labelStyle={{ color: "var(--muted-foreground)" }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="me"
+                    name={meLabel}
+                    stroke="var(--optic)"
+                    strokeWidth={2}
+                    dot={{ r: 2.5 }}
+                    activeDot={{ r: 4 }}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="opp"
+                    name="Opp"
+                    stroke="var(--muted-foreground)"
+                    strokeWidth={1.25}
+                    strokeDasharray="3 3"
+                    dot={{ r: 1.75 }}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="trend"
+                    name="Trend"
+                    stroke="var(--optic)"
+                    strokeWidth={1.25}
+                    strokeDasharray="2 4"
+                    strokeOpacity={0.75}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
                 </LineChart>
               )}
             </ResponsiveContainer>

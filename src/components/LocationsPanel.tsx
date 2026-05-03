@@ -2,8 +2,21 @@ import { useLocalStorage, STORAGE_KEYS } from "@/lib/storage";
 import type { SavedLocation, Session, Surface } from "@/lib/types";
 import { SURFACES } from "@/lib/types";
 import { surfaceClasses } from "@/lib/surface";
-import React, { useMemo, useState } from "react";
-import { Plus, Trash2, MapPin, Star, GripVertical, Camera, Archive, RotateCcw, ChevronDown, Crosshair } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Plus,
+  Trash2,
+  MapPin,
+  Star,
+  GripVertical,
+  Camera,
+  Archive,
+  RotateCcw,
+  ChevronDown,
+  Crosshair,
+  LayoutGrid,
+  List,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "./ConfirmModal";
 import { compressImageFile } from "@/lib/imageCompress";
@@ -54,6 +67,11 @@ export function LocationsPanel({ readOnly = false }: Props) {
   const [showArchived, setShowArchived] = useState(false);
   /** Location id whose cover image is currently in reposition mode. */
   const [repositioningId, setRepositioningId] = useState<string | null>(null);
+  const [layout, setLayout] = useState<"list" | "grid">("list");
+  // Force list view whenever Edit mode is active so action buttons remain accessible.
+  useEffect(() => {
+    if (!readOnly) setLayout("list");
+  }, [readOnly]);
 
   const auto = useMemo(() => {
     const set = new Set<string>();
@@ -153,7 +171,9 @@ export function LocationsPanel({ readOnly = false }: Props) {
   function confirmArchive() {
     if (!archiveTarget) return;
     if (archiveTarget.manual) {
-      setLocations(locations.map((l) => (l.id === archiveTarget.id ? { ...l, isHidden: true } : l)));
+      setLocations(
+        locations.map((l) => (l.id === archiveTarget.id ? { ...l, isHidden: true } : l)),
+      );
     } else {
       const maxOrder = locations.reduce((m, l) => Math.max(m, l.order ?? 0), 0);
       setLocations([
@@ -253,9 +273,7 @@ export function LocationsPanel({ readOnly = false }: Props) {
   function setDefaultSurface(item: MergedLocation, next: Surface | undefined) {
     if (readOnly) return;
     if (item.manual) {
-      setLocations(
-        locations.map((l) => (l.id === item.id ? { ...l, defaultSurface: next } : l)),
-      );
+      setLocations(locations.map((l) => (l.id === item.id ? { ...l, defaultSurface: next } : l)));
     } else {
       const maxOrder = locations.reduce((m, l) => Math.max(m, l.order ?? 0), 0);
       setLocations([
@@ -273,11 +291,15 @@ export function LocationsPanel({ readOnly = false }: Props) {
 
   function setLocationImage(item: MergedLocation, dataUrl: string | undefined) {
     if (readOnly) return;
-    const target = item.manual
-      ? locations.find((l) => l.id === item.id)
-      : null;
+    const target = item.manual ? locations.find((l) => l.id === item.id) : null;
     if (target) {
-      setLocations(locations.map((l) => (l.id === target.id ? { ...l, imageDataUrl: dataUrl, imageOffsetX: 50, imageOffsetY: 50 } : l)));
+      setLocations(
+        locations.map((l) =>
+          l.id === target.id
+            ? { ...l, imageDataUrl: dataUrl, imageOffsetX: 50, imageOffsetY: 50 }
+            : l,
+        ),
+      );
       setRepositioningId(dataUrl ? target.id : null);
       return;
     }
@@ -301,7 +323,9 @@ export function LocationsPanel({ readOnly = false }: Props) {
 
   function setLocationImageOffset(item: MergedLocation, x: number, y: number) {
     if (readOnly || !item.manual) return;
-    setLocations(locations.map((l) => (l.id === item.id ? { ...l, imageOffsetX: x, imageOffsetY: y } : l)));
+    setLocations(
+      locations.map((l) => (l.id === item.id ? { ...l, imageOffsetX: x, imageOffsetY: y } : l)),
+    );
   }
 
   function handleDragEnd(e: DragEndEvent) {
@@ -324,23 +348,57 @@ export function LocationsPanel({ readOnly = false }: Props) {
 
   return (
     <section className="flex flex-col gap-4">
-      {/* Permanent add bar */}
-      <div className="bg-card border-2 border-border rounded-2xl p-3 flex gap-2">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addLocation()}
-          placeholder="+ Add a Location"
-          className="flex-1 bg-transparent text-base focus:outline-none placeholder:text-muted-foreground"
-        />
-        <button
-          onClick={addLocation}
-          disabled={!name.trim()}
-          className="size-9 rounded-full bg-optic text-primary-foreground flex items-center justify-center disabled:opacity-30 hover:brightness-110 transition"
-          aria-label="Add location"
-        >
-          <Plus className="size-4" />
-        </button>
+      {/* Add bar + view toggle on same row */}
+      <div className="flex gap-2 items-stretch -mx-4 px-4">
+        <div className="flex-1 h-10 bg-card border-2 border-border rounded-xl px-3 py-1 flex items-center gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addLocation()}
+            placeholder="+ Add a Location"
+            className="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-muted-foreground min-w-0"
+          />
+          <button
+            onClick={addLocation}
+            disabled={!name.trim()}
+            className="size-7 rounded-full bg-optic text-primary-foreground flex items-center justify-center disabled:opacity-30 hover:brightness-110 transition shrink-0"
+            aria-label="Add location"
+          >
+            <Plus className="size-4" />
+          </button>
+        </div>
+        {readOnly && merged.length > 0 && (
+          <div className="h-10 flex bg-card border-2 border-border rounded-xl p-0.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setLayout("grid")}
+              className={cn(
+                "size-8 rounded-lg flex items-center justify-center transition",
+                layout === "grid"
+                  ? "bg-optic text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              aria-label="Grid view"
+              aria-pressed={layout === "grid"}
+            >
+              <LayoutGrid className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayout("list")}
+              className={cn(
+                "size-8 rounded-lg flex items-center justify-center transition",
+                layout === "list"
+                  ? "bg-optic text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              aria-label="List view"
+              aria-pressed={layout === "list"}
+            >
+              <List className="size-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {merged.length === 0 ? (
@@ -348,19 +406,23 @@ export function LocationsPanel({ readOnly = false }: Props) {
           No locations yet. Add a frequent court or club, or save it from a session.
         </div>
       ) : readOnly ? (
-        <div className="flex flex-col gap-3">
+        <div className={cn(layout === "grid" ? "grid grid-cols-2 gap-3" : "flex flex-col gap-3")}>
           {activeLocations.map((l) => (
             <LocationCard
               key={l.id}
               loc={l}
               readOnly
+              compact={layout === "grid"}
               onToggleFavorite={() => toggleFavorite(l)}
             />
           ))}
         </div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={activeLocations.map((l) => l.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext
+            items={activeLocations.map((l) => l.id)}
+            strategy={verticalListSortingStrategy}
+          >
             <div className="flex flex-col gap-3">
               {activeLocations.map((l) => (
                 <SortableLocationRow
@@ -374,7 +436,9 @@ export function LocationsPanel({ readOnly = false }: Props) {
                   onSetImageOffset={(x, y) => setLocationImageOffset(l, x, y)}
                   onSetDefaultSurface={(s) => setDefaultSurface(l, s)}
                   repositioning={repositioningId === l.id}
-                  onToggleReposition={() => setRepositioningId((cur) => (cur === l.id ? null : l.id))}
+                  onToggleReposition={() =>
+                    setRepositioningId((cur) => (cur === l.id ? null : l.id))
+                  }
                 />
               ))}
               {archivedLocations.length > 0 && (
@@ -385,24 +449,29 @@ export function LocationsPanel({ readOnly = false }: Props) {
                     className="self-start flex items-center gap-1 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground"
                     aria-expanded={showArchived}
                   >
-                    <ChevronDown className={cn("size-3 transition-transform", !showArchived && "-rotate-90")} />
+                    <ChevronDown
+                      className={cn("size-3 transition-transform", !showArchived && "-rotate-90")}
+                    />
                     Archived ({archivedLocations.length})
                   </button>
-                  {showArchived && archivedLocations.map((l) => (
-                    <SortableLocationRow
-                      key={l.id}
-                      loc={l}
-                      onDelete={() => setDeleteTarget(l)}
-                      onArchive={() => setArchiveTarget(l)}
-                      onUnarchive={() => unarchiveLocation(l)}
-                      onToggleFavorite={() => toggleFavorite(l)}
-                      onSetImage={(d) => setLocationImage(l, d)}
-                      onSetImageOffset={(x, y) => setLocationImageOffset(l, x, y)}
-                      onSetDefaultSurface={(s) => setDefaultSurface(l, s)}
-                      repositioning={repositioningId === l.id}
-                      onToggleReposition={() => setRepositioningId((cur) => (cur === l.id ? null : l.id))}
-                    />
-                  ))}
+                  {showArchived &&
+                    archivedLocations.map((l) => (
+                      <SortableLocationRow
+                        key={l.id}
+                        loc={l}
+                        onDelete={() => setDeleteTarget(l)}
+                        onArchive={() => setArchiveTarget(l)}
+                        onUnarchive={() => unarchiveLocation(l)}
+                        onToggleFavorite={() => toggleFavorite(l)}
+                        onSetImage={(d) => setLocationImage(l, d)}
+                        onSetImageOffset={(x, y) => setLocationImageOffset(l, x, y)}
+                        onSetDefaultSurface={(s) => setDefaultSurface(l, s)}
+                        repositioning={repositioningId === l.id}
+                        onToggleReposition={() =>
+                          setRepositioningId((cur) => (cur === l.id ? null : l.id))
+                        }
+                      />
+                    ))}
                 </div>
               )}
             </div>
@@ -436,10 +505,12 @@ export function LocationsPanel({ readOnly = false }: Props) {
 function LocationCard({
   loc: l,
   readOnly,
+  compact = false,
   onToggleFavorite,
 }: {
   loc: MergedLocation;
   readOnly?: boolean;
+  compact?: boolean;
   onToggleFavorite: () => void;
 }) {
   return (
@@ -449,15 +520,21 @@ function LocationCard({
         l.isFavorite ? "border-2 border-[var(--star-yellow)]" : "border-border",
       )}
     >
-      <CoverImage loc={l} />
-      <div className="p-3 flex items-center gap-3">
+      <CoverImage loc={l} compact={compact} />
+      <div className={cn("flex items-center gap-3", compact ? "p-2" : "p-3")}>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold truncate">{l.name}</div>
-          <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
-            <span>{l.uses} {l.uses === 1 ? "session" : "sessions"}</span>
+          <div className={cn("font-semibold truncate", compact && "text-sm")}>{l.name}</div>
+          <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+            <span>
+              {l.uses} {l.uses === 1 ? "session" : "sessions"}
+            </span>
             {l.defaultSurface && (
-              <span className={cn("flex items-center gap-1", surfaceClasses[l.defaultSurface].text)}>
-                <span className={cn("size-1.5 rounded-full", surfaceClasses[l.defaultSurface].dot)} />
+              <span
+                className={cn("flex items-center gap-1", surfaceClasses[l.defaultSurface].text)}
+              >
+                <span
+                  className={cn("size-1.5 rounded-full", surfaceClasses[l.defaultSurface].dot)}
+                />
                 {l.defaultSurface}
               </span>
             )}
@@ -475,15 +552,22 @@ function CoverImage({
   reposition = false,
   onSetOffset,
   onDoneReposition,
+  compact = false,
 }: {
   loc: MergedLocation;
   onUpload?: (dataUrl: string | undefined) => void;
   reposition?: boolean;
   onSetOffset?: (x: number, y: number) => void;
   onDoneReposition?: () => void;
+  compact?: boolean;
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const draggingRef = React.useRef<{ startY: number; startX: number; ox: number; oy: number } | null>(null);
+  const draggingRef = React.useRef<{
+    startY: number;
+    startX: number;
+    ox: number;
+    oy: number;
+  } | null>(null);
 
   function handleFile(file: File | undefined) {
     if (!file || !onUpload) return;
@@ -528,7 +612,7 @@ function CoverImage({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
-          className="block relative h-36 w-full bg-graphite cursor-grab active:cursor-grabbing select-none touch-none"
+          className="block relative aspect-video w-full bg-graphite cursor-grab active:cursor-grabbing select-none touch-none"
         >
           <img
             src={loc.imageDataUrl}
@@ -544,7 +628,10 @@ function CoverImage({
           {onDoneReposition && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onDoneReposition(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDoneReposition();
+              }}
               onPointerDown={(e) => e.stopPropagation()}
               className="absolute top-2 right-2 px-3 py-1 rounded-full bg-optic text-primary-foreground text-[10px] font-bold uppercase tracking-widest hover:brightness-110"
             >
@@ -556,18 +643,33 @@ function CoverImage({
     }
     if (onUpload) {
       return (
-        <label className="block relative h-36 w-full bg-graphite cursor-pointer group">
-          <img src={loc.imageDataUrl} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition }} />
+        <label className="block relative aspect-video w-full bg-graphite cursor-pointer group">
+          <img
+            src={loc.imageDataUrl}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ objectPosition }}
+          />
           <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold uppercase tracking-widest transition">
             <Camera className="size-4 mr-1" /> Replace
           </span>
-          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
         </label>
       );
     }
     return (
-      <div className="relative h-36 w-full bg-graphite">
-        <img src={loc.imageDataUrl} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition }} />
+      <div className="relative aspect-video w-full bg-graphite">
+        <img
+          src={loc.imageDataUrl}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ objectPosition }}
+        />
       </div>
     );
   }
@@ -577,7 +679,12 @@ function CoverImage({
     <label className="flex items-center justify-center h-20 w-full bg-graphite/40 border-b border-border cursor-pointer hover:bg-graphite/60 transition gap-2 text-muted-foreground">
       <Camera className="size-4" />
       <span className="text-[11px] font-bold uppercase tracking-widest">Add cover photo</span>
-      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
     </label>
   );
 }
@@ -608,7 +715,8 @@ function SortableLocationRow({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: l.id,
   });
-  void attributes; void listeners;
+  void attributes;
+  void listeners;
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -626,9 +734,7 @@ function SortableLocationRow({
       style={style}
       className={cn(
         "bg-card border rounded-2xl overflow-hidden transition-all",
-        l.isFavorite
-          ? "border-2 border-[var(--star-yellow)]"
-          : "border-border",
+        l.isFavorite ? "border-2 border-[var(--star-yellow)]" : "border-border",
       )}
     >
       <CoverImage
@@ -646,7 +752,10 @@ function SortableLocationRow({
             <div className="font-semibold truncate">{l.name}</div>
           </div>
           <FavStar isFavorite={l.isFavorite} onToggle={onToggleFavorite} />
-          <label className="size-8 rounded-full text-muted-foreground hover:text-optic flex items-center justify-center transition shrink-0 cursor-pointer" aria-label="Upload location image">
+          <label
+            className="size-8 rounded-full text-muted-foreground hover:text-optic flex items-center justify-center transition shrink-0 cursor-pointer"
+            aria-label="Upload location image"
+          >
             <Camera className="size-4" />
             <input
               type="file"
@@ -776,4 +885,3 @@ function FavStar({
     </button>
   );
 }
-

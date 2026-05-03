@@ -2,7 +2,18 @@ import { useLocalStorage, STORAGE_KEYS } from "@/lib/storage";
 import type { CustomGame, OpponentRating, Player, Session } from "@/lib/types";
 import { OPPONENT_RATINGS } from "@/lib/types";
 import { useMemo, useState } from "react";
-import { Plus, Archive, ChevronRight, ArrowLeft, ChevronDown, Pencil, RotateCcw, GripVertical, Star, Trash2 } from "lucide-react";
+import {
+  Plus,
+  Archive,
+  ChevronRight,
+  ArrowLeft,
+  ChevronDown,
+  Pencil,
+  RotateCcw,
+  GripVertical,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { surfaceClasses, matchOutcome, formatDuration } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 import { Scoreboard } from "./Scoreboard";
@@ -10,6 +21,7 @@ import { ConfirmModal } from "./ConfirmModal";
 import { withFriendlyResults, withFriendlyGame } from "@/lib/friendly";
 import { wlClass } from "@/lib/wlColor";
 import { useMeLabel } from "@/lib/identity";
+import { sessionIncludesPlayer } from "@/lib/participants";
 import {
   DndContext,
   closestCenter,
@@ -56,10 +68,7 @@ export function PlayersPanel({ embedded = false, onOpenGamesForPlayer, editMode 
     return a.createdAt < b.createdAt ? 1 : -1;
   };
 
-  const activePlayers = useMemo(
-    () => players.filter((p) => !p.isArchived).sort(sortFn),
-    [players],
-  );
+  const activePlayers = useMemo(() => players.filter((p) => !p.isArchived).sort(sortFn), [players]);
   const archivedPlayers = useMemo(
     () => players.filter((p) => p.isArchived).sort(sortFn),
     [players],
@@ -77,7 +86,10 @@ export function PlayersPanel({ embedded = false, onOpenGamesForPlayer, editMode 
     const oldIndex = ids.indexOf(String(active.id));
     const newIndex = ids.indexOf(String(over.id));
     if (oldIndex === -1 || newIndex === -1) return;
-    const reordered = arrayMove(visiblePlayers, oldIndex, newIndex).map((p, i) => ({ ...p, order: i + 1 }));
+    const reordered = arrayMove(visiblePlayers, oldIndex, newIndex).map((p, i) => ({
+      ...p,
+      order: i + 1,
+    }));
     const known = new Set(reordered.map((p) => p.id));
     setPlayers([...reordered, ...players.filter((p) => !known.has(p.id))]);
   }
@@ -152,10 +164,29 @@ export function PlayersPanel({ embedded = false, onOpenGamesForPlayer, editMode 
       setSessions(
         sessions.map((s) => {
           let updated = s;
-          if (s.score?.opponentId === editingId || s.score?.opponent === oldName) {
-            updated = { ...updated, score: { ...s.score!, opponent: next } };
+          if (s.score) {
+            const score = { ...s.score };
+            if (score.opponentId === editingId || score.opponent === oldName) score.opponent = next;
+            if (score.partnerId === editingId || score.partnerName === oldName)
+              score.partnerName = next;
+            if (score.opponentsLabel?.includes(oldName))
+              score.opponentsLabel = score.opponentsLabel.replaceAll(oldName, next);
+            if (
+              score.partnerNames?.some(
+                (name, idx) => name === oldName || score.partnerIds?.[idx] === editingId,
+              )
+            ) {
+              score.partnerNames = score.partnerNames.map((name, idx) =>
+                name === oldName || score.partnerIds?.[idx] === editingId ? next : name,
+              );
+            }
+            updated = { ...updated, score };
           }
-          if (updated.customResults?.some((r) => r.partnerId === editingId || r.partnerName === oldName)) {
+          if (
+            updated.customResults?.some(
+              (r) => r.partnerId === editingId || r.partnerName === oldName,
+            )
+          ) {
             updated = {
               ...updated,
               customResults: updated.customResults!.map((r) =>
@@ -217,18 +248,9 @@ export function PlayersPanel({ embedded = false, onOpenGamesForPlayer, editMode 
 
       {(() => {
         const renderRow = (p: Player) => {
-          const friendlies = sessions.filter((s) => {
-            const sc = s.score;
-            if (sc) {
-              if (sc.partnerId === p.id || sc.opponentId === p.id) return true;
-              if (sc.partnerName === p.name || sc.opponent === p.name) return true;
-              if (sc.partnerIds?.includes(p.id)) return true;
-              if (sc.partnerNames?.includes(p.name)) return true;
-            }
-            if (s.customResults?.some((r) => r.partnerId === p.id || r.partnerName === p.name)) return true;
-            return false;
-          });
-          let w = 0, l = 0;
+          const friendlies = sessions.filter((s) => sessionIncludesPlayer(s, p));
+          let w = 0,
+            l = 0;
           for (const s of friendlies) {
             if (!s.score) continue;
             const o = matchOutcome(s.score.sets);
@@ -268,11 +290,16 @@ export function PlayersPanel({ embedded = false, onOpenGamesForPlayer, editMode 
                 No players yet. Add one to use them as opponents in sessions.
               </div>
             ) : (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={activePlayers.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-                  <div className="flex flex-col gap-2">
-                    {activePlayers.map(renderRow)}
-                  </div>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={activePlayers.map((p) => p.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="flex flex-col gap-2">{activePlayers.map(renderRow)}</div>
                 </SortableContext>
               </DndContext>
             )}
@@ -372,16 +399,13 @@ function SortablePlayerRow({
     opacity: isDragging ? 0.6 : 1,
   };
 
-
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(
         "bg-card border rounded-2xl p-3 flex flex-col gap-2 transition-all",
-        p.isFavorite && !p.isArchived
-          ? "border-2 border-[var(--star-yellow)]"
-          : "border-border",
+        p.isFavorite && !p.isArchived ? "border-2 border-[var(--star-yellow)]" : "border-border",
       )}
     >
       {isEditing ? (
@@ -397,7 +421,11 @@ function SortablePlayerRow({
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative size-9 rounded-full bg-graphite flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
               {p.avatarDataUrl ? (
-                <img src={p.avatarDataUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <img
+                  src={p.avatarDataUrl}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
               ) : (
                 <span>{(editValue || p.name).slice(0, 1).toUpperCase()}</span>
               )}
@@ -420,7 +448,9 @@ function SortablePlayerRow({
             >
               <option value="">R-</option>
               {OPPONENT_RATINGS.map((r) => (
-                <option key={r} value={r}>{r}</option>
+                <option key={r} value={r}>
+                  {r}
+                </option>
               ))}
             </select>
           </div>
@@ -447,7 +477,11 @@ function SortablePlayerRow({
           <div className="flex items-center gap-2">
             <div className="relative size-10 rounded-full bg-graphite flex items-center justify-center font-bold text-base shrink-0 overflow-hidden">
               {p.avatarDataUrl ? (
-                <img src={p.avatarDataUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <img
+                  src={p.avatarDataUrl}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
               ) : (
                 <span>{p.name.slice(0, 1).toUpperCase()}</span>
               )}
@@ -458,40 +492,45 @@ function SortablePlayerRow({
               disabled={editMode}
               className="flex-1 flex items-center gap-3 min-w-0 text-left disabled:cursor-default"
             >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <div className="font-semibold truncate">{p.name}</div>
-                {p.classification && (
-                  <span className="text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full bg-graphite/70 text-foreground">
-                    {p.classification}
-                  </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="font-semibold truncate">{p.name}</div>
+                  {p.classification && (
+                    <span className="text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full bg-graphite/70 text-foreground">
+                      {p.classification}
+                    </span>
+                  )}
+                </div>
+                {!editMode && (
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {friendlies} {friendlies === 1 ? "session" : "sessions"} ·{" "}
+                    <span className={cn("font-semibold", wlClass(w, l))}>
+                      {w}W / {l}L
+                    </span>
+                  </div>
                 )}
               </div>
-              {!editMode && (
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  {friendlies} {friendlies === 1 ? "session" : "sessions"} ·{" "}
-                  <span className={cn("font-semibold", wlClass(w, l))}>{w}W / {l}L</span>
-                </div>
-              )}
-            </div>
             </button>
             {!p.isArchived && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-              className="size-8 rounded-full hover:scale-110 hover:bg-[var(--star-yellow)]/10 flex items-center justify-center transition shrink-0"
-              aria-label={p.isFavorite ? "Unstar player" : "Star player"}
-              aria-pressed={!!p.isFavorite}
-            >
-              <Star
-                className={cn(
-                  "size-4 transition-colors",
-                  p.isFavorite
-                    ? "fill-[var(--star-yellow)] text-[var(--star-yellow)]"
-                    : "text-muted-foreground/50",
-                )}
-              />
-            </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFavorite();
+                }}
+                className="size-8 rounded-full hover:scale-110 hover:bg-[var(--star-yellow)]/10 flex items-center justify-center transition shrink-0"
+                aria-label={p.isFavorite ? "Unstar player" : "Star player"}
+                aria-pressed={!!p.isFavorite}
+              >
+                <Star
+                  className={cn(
+                    "size-4 transition-colors",
+                    p.isFavorite
+                      ? "fill-[var(--star-yellow)] text-[var(--star-yellow)]"
+                      : "text-muted-foreground/50",
+                  )}
+                />
+              </button>
             )}
             {editMode && (
               <button
@@ -562,16 +601,7 @@ function H2HView({
   const vs = useMemo(
     () =>
       sessions
-        .filter((s) => {
-          // Match opponent linkage
-          if (s.score && (s.score.opponentId === player.id || s.score.opponent === player.name)) return true;
-          // Singles-training extra partners
-          if (s.score?.partnerIds?.includes(player.id)) return true;
-          if (s.score?.partnerNames?.includes(player.name)) return true;
-          // Training partner linkage via mini-games
-          if (s.customResults?.some((r) => r.partnerId === player.id || r.partnerName === player.name)) return true;
-          return false;
-        })
+        .filter((s) => sessionIncludesPlayer(s, player))
         .sort((a, b) => (a.date < b.date ? 1 : -1)),
     [sessions, player],
   );
@@ -580,7 +610,9 @@ function H2HView({
   const totalMin = vs.reduce((a, s) => a + s.durationMin, 0);
 
   const matchSessions = vs.filter((s) => s.mode === "match" && s.score);
-  let mW = 0, mL = 0, mD = 0;
+  let mW = 0,
+    mL = 0,
+    mD = 0;
   for (const s of matchSessions) {
     const o = matchOutcome(s.score!.sets);
     if (o.result === "win") mW++;
@@ -588,18 +620,31 @@ function H2HView({
     else mD++;
   }
 
-  const perGame: { game: CustomGame; w: number; l: number; d: number; plays: number; meSum: number; oppSum: number }[] = [];
+  const perGame: {
+    game: CustomGame;
+    w: number;
+    l: number;
+    d: number;
+    plays: number;
+    meSum: number;
+    oppSum: number;
+  }[] = [];
   const mergedGames = withFriendlyGame(games);
   const mergedSessions = withFriendlyResults(vs);
   for (const g of [...mergedGames].sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity))) {
-    let w = 0, l = 0, d = 0, plays = 0, meSum = 0, oppSum = 0;
+    let w = 0,
+      l = 0,
+      d = 0,
+      plays = 0,
+      meSum = 0,
+      oppSum = 0;
     for (const s of mergedSessions) {
       for (const r of s.customResults ?? []) {
         if (r.gameId !== g.id) continue;
         const matchesPartner =
           r.partnerId === player.id ||
           r.partnerName === player.name ||
-          (!r.partnerId && !r.partnerName && (s.score?.opponentId === player.id || s.score?.opponent === player.name));
+          (!r.partnerId && !r.partnerName && sessionIncludesPlayer(s, player));
         if (!matchesPartner) continue;
         plays++;
         if ((g.scoringMode ?? "match") === "cumulative") {
@@ -641,12 +686,18 @@ function H2HView({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-1">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Sessions Together</div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            Sessions Together
+          </div>
           <div className="text-3xl font-bold tabular-nums leading-none">{totalSessions}</div>
         </div>
         <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-1">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Time</div>
-          <div className="text-3xl font-bold tabular-nums leading-none">{formatDuration(totalMin)}</div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            Total Time
+          </div>
+          <div className="text-3xl font-bold tabular-nums leading-none">
+            {formatDuration(totalMin)}
+          </div>
         </div>
       </div>
 
@@ -658,13 +709,17 @@ function H2HView({
         className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-3 text-left hover:border-foreground/40 transition disabled:cursor-default disabled:hover:border-border"
       >
         <div className="flex items-center justify-between">
-          <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Mini-Games vs {player.name}</div>
+          <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            Mini-Games vs {player.name}
+          </div>
           {onOpenGames && perGame.length > 0 && (
             <ChevronRight className="size-4 text-muted-foreground" />
           )}
         </div>
         {perGame.length === 0 ? (
-          <div className="text-sm text-muted-foreground py-2">No mini-game results vs this player yet.</div>
+          <div className="text-sm text-muted-foreground py-2">
+            No mini-game results vs this player yet.
+          </div>
         ) : (
           <div className="flex flex-col gap-3">
             {perGame.map(({ game, w, l, d, plays, meSum, oppSum }) => {
@@ -702,13 +757,25 @@ function H2HView({
           className="w-full p-5 flex items-center justify-between gap-3"
         >
           <div className="flex items-center gap-3">
-            <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Official Matches</div>
+            <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+              Official Matches
+            </div>
             <div className={cn("text-sm font-bold tabular-nums", wlClass(mW, mL))}>
               {mW}W / {mL}L
-              {mD > 0 && <span className="text-muted-foreground">{" / "}{mD}D</span>}
+              {mD > 0 && (
+                <span className="text-muted-foreground">
+                  {" / "}
+                  {mD}D
+                </span>
+              )}
             </div>
           </div>
-          <ChevronDown className={cn("size-5 text-muted-foreground transition-transform", matchesOpen && "rotate-180")} />
+          <ChevronDown
+            className={cn(
+              "size-5 text-muted-foreground transition-transform",
+              matchesOpen && "rotate-180",
+            )}
+          />
         </button>
         {matchesOpen && (
           <div className="px-5 pb-5 flex flex-col gap-2 border-t border-border pt-3">
@@ -719,11 +786,18 @@ function H2HView({
                 const sc = surfaceClasses[s.surface];
                 const o = matchOutcome(s.score!.sets);
                 return (
-                  <div key={s.id} className="flex items-center gap-3 py-2 border-b border-border/40 last:border-0">
+                  <div
+                    key={s.id}
+                    className="flex items-center gap-3 py-2 border-b border-border/40 last:border-0"
+                  >
                     <span className={cn("size-2.5 rounded-full shrink-0", sc.dot)} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium">
-                        {new Date(s.date).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                        {new Date(s.date).toLocaleDateString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
                       </div>
                       <div className="text-[11px] text-muted-foreground">
                         {formatDuration(s.durationMin)}

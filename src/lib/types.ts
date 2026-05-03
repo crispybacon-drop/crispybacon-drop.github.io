@@ -13,7 +13,17 @@ export interface SetScore {
 
 export type OpponentRating = "R1" | "R2" | "R3" | "R4" | "R5" | "R6" | "R7" | "R8" | "R9";
 
-export const OPPONENT_RATINGS: OpponentRating[] = ["R9","R8","R7","R6","R5","R4","R3","R2","R1"];
+export const OPPONENT_RATINGS: OpponentRating[] = [
+  "R9",
+  "R8",
+  "R7",
+  "R6",
+  "R5",
+  "R4",
+  "R3",
+  "R2",
+  "R1",
+];
 
 export interface Score {
   // Singles: opponentId/opponent = the opponent.
@@ -31,6 +41,8 @@ export interface Score {
   partnerName?: string;
   /** Doubles: free-text label for the opposing team. Not linked to Player records. */
   opponentsLabel?: string;
+  /** Training doubles: linked opponent Player.ids, aligned with opponentsLabel names when available. */
+  opponentIds?: string[];
   /** Singles training: additional partner Player.ids beyond the primary one (rotating hitting groups). */
   partnerIds?: string[];
   /** Singles training: extra partner display names aligned with partnerIds. */

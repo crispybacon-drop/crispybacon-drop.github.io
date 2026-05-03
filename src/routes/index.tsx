@@ -26,7 +26,7 @@ import { sessionTitle } from "@/lib/sessionTitle";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { withFriendlyResults, withFriendlyGame } from "@/lib/friendly";
 import { formatDayShort, formatDayLong } from "@/lib/dates";
-import { useUserName, useUserRating } from "@/lib/identity";
+import { useUserRating } from "@/lib/identity";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -87,9 +87,7 @@ function Index() {
     const totalMin = sessions.reduce((a, s) => a + s.durationMin, 0);
     const daysPlayed = new Set(sessions.map((s) => s.date)).size;
 
-    const sorted = [...sessions].sort((a, b) =>
-      a.date < b.date ? 1 : a.date > b.date ? -1 : 0,
-    );
+    const sorted = [...sessions].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     const last = sorted[0] ?? null;
 
     const matchResults: ("win" | "loss" | "draw")[] = [];
@@ -109,7 +107,9 @@ function Index() {
     });
     const standings: { id: string; name: string; w: number; l: number; d: number }[] = [];
     for (const g of orderedGames) {
-      let w = 0, l = 0, d = 0;
+      let w = 0,
+        l = 0,
+        d = 0;
       for (const s of mergedSessions) {
         for (const r of s.customResults ?? []) {
           if (r.gameId !== g.id) continue;
@@ -141,7 +141,13 @@ function Index() {
         <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3 safe-pt">
           <div className="flex items-center gap-3 min-w-0 shrink-0">
             <div className="size-10 rounded-2xl bg-optic flex items-center justify-center shrink-0">
-              <svg viewBox="0 0 24 24" fill="none" className="size-5 text-primary-foreground" stroke="currentColor" strokeWidth="2.5">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                className="size-5 text-primary-foreground"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
                 <circle cx="12" cy="12" r="9" />
                 <path d="M3 12c4 0 7-3 9-9M21 12c-4 0-7 3-9 9" />
               </svg>
@@ -216,7 +222,9 @@ function Index() {
             {tab === "network" && (
               <NetworkPanel
                 onOpenGamesForPlayer={openTrackersForPlayer}
-                registerLeaveGuard={(g) => { networkLeaveGuardRef.current = g; }}
+                registerLeaveGuard={(g) => {
+                  networkLeaveGuardRef.current = g;
+                }}
               />
             )}
           </>
@@ -252,7 +260,9 @@ function Index() {
                   )}
                 >
                   <Icon className="size-5" />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider">
+                    {label}
+                  </span>
                 </button>
               );
             })}
@@ -266,13 +276,12 @@ function Index() {
 
 function UserIdentityChip() {
   const [rating] = useUserRating();
+
   if (!rating) return null;
-  
+
   return (
     <div className="flex items-center justify-center min-w-[48px] px-3 py-1.5 rounded-full bg-card border border-border">
-      <span className="text-[11px] font-bold tabular-nums leading-none text-optic">
-        {rating}
-      </span>
+      <span className="text-[11px] font-bold tabular-nums leading-none text-optic">{rating}</span>
     </div>
   );
 }
@@ -311,7 +320,9 @@ function SevenDayStrip({ sessions }: { sessions: Session[] }) {
   return (
     <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">This Week</div>
+        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          This Week
+        </div>
         <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
           {formatDayShort(monday)}
         </div>
@@ -339,7 +350,12 @@ function SevenDayStrip({ sessions }: { sessions: Session[] }) {
                 <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground leading-none">
                   {labels[i]}
                 </div>
-                <div className={cn("text-base font-bold tabular-nums leading-none", d.isToday && "text-optic")}>
+                <div
+                  className={cn(
+                    "text-base font-bold tabular-nums leading-none",
+                    d.isToday && "text-optic",
+                  )}
+                >
                   {d.date.getDate()}
                 </div>
                 {d.hasMatch && (
@@ -364,24 +380,43 @@ function SevenDayStrip({ sessions }: { sessions: Session[] }) {
   );
 }
 
-function BoldScoreRow({ sets }: { sets: { me: number | null; opp: number | null; meTb?: number | null; oppTb?: number | null; isCtb?: boolean }[] }) {
+function BoldScoreRow({
+  sets,
+}: {
+  sets: {
+    me: number | null;
+    opp: number | null;
+    meTb?: number | null;
+    oppTb?: number | null;
+    isCtb?: boolean;
+  }[];
+}) {
   return (
     <div className="flex gap-1.5 tabular-nums">
       {sets.map((set, i) => {
         const meWin = set.me != null && set.opp != null && set.me > set.opp;
         const oppWin = set.me != null && set.opp != null && set.opp > set.me;
         const isTb =
-          !set.isCtb &&
-          ((set.me === 7 && set.opp === 6) || (set.me === 6 && set.opp === 7));
+          !set.isCtb && ((set.me === 7 && set.opp === 6) || (set.me === 6 && set.opp === 7));
         return (
           <div key={i} className="flex flex-col items-center leading-none gap-0.5">
-            <span className={cn("min-w-[30px] text-center px-2 py-1 rounded-md font-display font-black text-3xl", meWin ? "bg-graphite text-foreground" : "text-muted-foreground")}>
+            <span
+              className={cn(
+                "min-w-[30px] text-center px-2 py-1 rounded-md font-display font-black text-3xl",
+                meWin ? "bg-graphite text-foreground" : "text-muted-foreground",
+              )}
+            >
               {set.me ?? "-"}
               {isTb && set.meTb != null && (
                 <sup className="ml-0.5 text-[11px] font-bold text-optic">{set.meTb}</sup>
               )}
             </span>
-            <span className={cn("min-w-[30px] text-center px-2 py-1 rounded-md font-display font-black text-3xl", oppWin ? "bg-graphite text-foreground" : "text-muted-foreground")}>
+            <span
+              className={cn(
+                "min-w-[30px] text-center px-2 py-1 rounded-md font-display font-black text-3xl",
+                oppWin ? "bg-graphite text-foreground" : "text-muted-foreground",
+              )}
+            >
               {set.opp ?? "-"}
               {isTb && set.oppTb != null && (
                 <sup className="ml-0.5 text-[11px] font-bold text-optic">{set.oppTb}</sup>
@@ -414,10 +449,17 @@ function LastSessionWidget({ session }: { session: Session | null }) {
         <div className="flex items-start justify-between gap-3">
           {/* LEFT: label + title + chips */}
           <div className="flex-1 min-w-0 flex flex-col gap-2">
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Last Session</div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              Last Session
+            </div>
             <div className="text-base font-bold leading-snug truncate">{title}</div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={cn("flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest", sc.text)}>
+              <span
+                className={cn(
+                  "flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest",
+                  sc.text,
+                )}
+              >
                 <span className={cn("size-1.5 rounded-full", sc.dot)} />
                 {session.surface}
               </span>
@@ -482,8 +524,12 @@ function CurrentForm({ results }: { results: ("win" | "loss" | "draw")[] }) {
   return (
     <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Current Form</div>
-        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Last 5 matches</div>
+        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          Current Form
+        </div>
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          Last 5 matches
+        </div>
       </div>
       <div className="flex items-center justify-center gap-2.5">
         {slots.map((r, i) => (
@@ -515,7 +561,9 @@ function CustomGameStandingsCard({
   if (standings.length === 0) return null;
   return (
     <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-3">
-      <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Custom Game Standings</div>
+      <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+        Custom Game Standings
+      </div>
       <div className="flex flex-col gap-1.5">
         {standings.map((g) => (
           <button
@@ -548,16 +596,38 @@ function CollapsibleSessions({
   forceOpen: boolean;
 }) {
   const [open, setOpen] = useState(forceOpen);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   // Auto-open when a date filter arrives
   if (forceOpen && !open) setOpen(true);
+  // Smooth-scroll the accordion header near the top of the viewport when opened.
+  // Does NOT modify the calendar; only scrolls the page.
+  function handleToggle() {
+    setOpen((v) => {
+      const next = !v;
+      if (next) {
+        setTimeout(() => {
+          const el = wrapperRef.current;
+          if (!el || typeof window === "undefined") return;
+          const rect = el.getBoundingClientRect();
+          const y = window.scrollY + rect.top - 12;
+          window.scrollTo({ top: y, behavior: "smooth" });
+        }, 150);
+      }
+      return next;
+    });
+  }
   return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full px-5 py-4 flex items-center justify-between"
-      >
-        <span className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Show All Sessions</span>
-        <ChevronDown className={cn("size-5 text-muted-foreground transition-transform", open && "rotate-180")} />
+    <div
+      ref={wrapperRef}
+      className="bg-card border border-border rounded-2xl overflow-hidden scroll-mt-4"
+    >
+      <button onClick={handleToggle} className="w-full px-5 py-4 flex items-center justify-between">
+        <span className="text-sm font-bold uppercase tracking-widest text-muted-foreground">
+          Show All Sessions
+        </span>
+        <ChevronDown
+          className={cn("size-5 text-muted-foreground transition-transform", open && "rotate-180")}
+        />
       </button>
       {open && (
         <div className="px-3 pb-4 border-t border-border pt-4">

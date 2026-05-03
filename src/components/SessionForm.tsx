@@ -15,8 +15,14 @@ import type {
 } from "@/lib/types";
 import { SURFACES, OPPONENT_RATINGS } from "@/lib/types";
 import { surfaceClasses } from "@/lib/surface";
+import { useMeLabel } from "@/lib/identity";
 import { useSurfaceVisibility } from "@/lib/visibleSurfaces";
-import { useDefaultSurface, useMaxSets, useLocationVisibility, useCumulativeMaxSets } from "@/lib/settings";
+import {
+  useDefaultSurface,
+  useMaxSets,
+  useLocationVisibility,
+  useCumulativeMaxSets,
+} from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { ScoreGrid } from "./ScoreGrid";
 import { AnimatedTabs } from "./AnimatedTabs";
@@ -24,6 +30,7 @@ import { AnimatedTabs } from "./AnimatedTabs";
 import { AlertModal } from "./ConfirmModal";
 import { isMatchDecided } from "@/lib/matchProgress";
 import { isLegalSet, isLegalChampionsTiebreak, isTiebreakConsistent } from "@/lib/tennisRules";
+import { splitParticipantNames } from "@/lib/participants";
 import { Plus, Trash2, Check, X, Clock, Star, ChevronDown } from "lucide-react";
 
 interface Props {
@@ -45,8 +52,14 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
   const [sessions, setSessions] = useLocalStorage<Session[]>(STORAGE_KEYS.sessions, []);
   const [players] = useLocalStorage<Player[]>(STORAGE_KEYS.players, []);
   const [games] = useLocalStorage<CustomGame[]>(STORAGE_KEYS.customGames, []);
-  const [savedLocations, setSavedLocations] = useLocalStorage<SavedLocation[]>(STORAGE_KEYS.locations, []);
-  const [myClassification] = useLocalStorage<OpponentRating | "">(STORAGE_KEYS.myClassification, "");
+  const [savedLocations, setSavedLocations] = useLocalStorage<SavedLocation[]>(
+    STORAGE_KEYS.locations,
+    [],
+  );
+  const [myClassification] = useLocalStorage<OpponentRating | "">(
+    STORAGE_KEYS.myClassification,
+    "",
+  );
   const { visibleSurfaces } = useSurfaceVisibility();
   const [defaultSurface] = useDefaultSurface();
   const [maxSets] = useMaxSets();
@@ -68,25 +81,35 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
     (editing?.formats?.[0] as Format | undefined) ?? "",
   );
   const [trainingFormats, setTrainingFormats] = useState<Format[]>(
-    editing?.mode === "training" && editing.formats?.length
-      ? (editing.formats as Format[])
-      : [],
+    editing?.mode === "training" && editing.formats?.length ? (editing.formats as Format[]) : [],
   );
+  const initialTrainingOpponents = (() => {
+    if (!editing?.score) return [] as string[];
+    const sc = editing.score;
+    const ids = sc.opponentIds ?? [];
+    if (ids.length > 0) return ids;
+    const labels = splitParticipantNames(sc?.opponentsLabel || sc?.opponent);
+    return labels
+      .map((name) => players.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id ?? "")
+      .filter(Boolean);
+  })();
   // Doubles training: 3-person picker (1 partner + 2 opponents)
-  const [trainingOppAId, setTrainingOppAId] = useState<string>("");
-  const [trainingOppBId, setTrainingOppBId] = useState<string>("");
+  const [trainingOppAId, setTrainingOppAId] = useState<string>(initialTrainingOpponents[0] ?? "");
+  const [trainingOppBId, setTrainingOppBId] = useState<string>(initialTrainingOpponents[1] ?? "");
   const [isInterclub, setIsInterclub] = useState(editing?.isInterclub ?? false);
   const [location, setLocation] = useState(editing?.location ?? "");
   const [showLocationInput, setShowLocationInput] = useState(false);
-  // Detect a once-only / ghost opponent: opponent name present but no Player.id link.
+  const editingPrimaryId = editing?.score?.partnerId ?? editing?.score?.opponentId ?? "";
+  // Detect a once-only / ghost opponent/partner: primary participant name present but no Player.id link.
   const editingGhostName = (() => {
     const sc = editing?.score;
     if (!sc) return "";
-    if (sc.partnerId || sc.opponentId) return "";
+    if (editingPrimaryId) return "";
+    if (editing?.formats?.includes("doubles")) return (sc.partnerName || "").trim();
     return (sc.partnerName || sc.opponent || "").trim();
   })();
   const [opponentId, setOpponentId] = useState<string>(
-    editing?.score?.partnerId ?? editing?.score?.opponentId ?? (editingGhostName ? "__new__" : ""),
+    editingPrimaryId || (editingGhostName ? "__new__" : ""),
   );
   // Singles training (incl. casual): additional partners (rotating hitting groups).
   // Each entry can be a known player (id set) or a ghost text-only name.
@@ -108,15 +131,69 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
   const [rating, setRating] = useState<OpponentRating | "">(editing?.score?.rating ?? "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [sets, setSets] = useState<SetScore[]>(editing?.score?.sets ?? [{ me: null, opp: null }]);
-  const [customResults, setCustomResults] = useState<CustomGameResult[]>(editing?.customResults ?? []);
+  const [customResults, setCustomResults] = useState<CustomGameResult[]>(
+    editing?.customResults ?? [],
+  );
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    const editScore = editing.score;
+    setMode(editing.mode);
+    setSurface(editing.surface ?? "");
+    setDate(editing.date ?? new Date().toISOString().slice(0, 10));
+    setDuration(editing.durationMin != null ? String(editing.durationMin) : "60");
+    setShowStartTime(!!editing.startTime);
+    setStartTime(editing.startTime ?? "");
+    setFormat((editing.formats?.[0] as Format | undefined) ?? "");
+    setTrainingFormats(
+      editing.mode === "training" && editing.formats?.length ? (editing.formats as Format[]) : [],
+    );
+    setIsInterclub(editing.isInterclub ?? false);
+    setLocation(editing.location ?? "");
+
+    const primaryId = editScore?.partnerId ?? editScore?.opponentId ?? "";
+    const ghostName = (() => {
+      if (!editScore || primaryId) return "";
+      if (editing.formats?.includes("doubles")) return (editScore.partnerName || "").trim();
+      return (editScore.partnerName || editScore.opponent || "").trim();
+    })();
+    setOpponentId(primaryId || (ghostName ? "__new__" : ""));
+    setNewOpponent(ghostName);
+
+    const ids = editScore?.partnerIds ?? [];
+    const names = editScore?.partnerNames ?? [];
+    const extras: ExtraPartner[] = [];
+    for (let i = 0; i < Math.max(ids.length, names.length); i++) {
+      const id = ids[i];
+      const name = names[i] ?? "";
+      if (id) extras.push({ id, name });
+      else if (name) extras.push({ name });
+    }
+    setExtraPartners(extras);
+
+    const labels = splitParticipantNames(editScore?.opponentsLabel || editScore?.opponent);
+    const trainingIds = editScore?.opponentIds?.length
+      ? editScore.opponentIds
+      : labels
+          .map((name) => players.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id ?? "")
+          .filter(Boolean);
+    setTrainingOppAId(trainingIds[0] ?? "");
+    setTrainingOppBId(trainingIds[1] ?? "");
+    setOpponentsLabel(editScore?.opponentsLabel ?? "");
+    setRating(editScore?.rating ?? "");
+    setNotes(editing.notes ?? "");
+    setSets(editScore?.sets ?? [{ me: null, opp: null }]);
+    setCustomResults(editing.customResults ?? []);
+  }, [editing?.id, players]);
 
   const opposingTeamRef = useRef<HTMLInputElement>(null);
 
   const sc = surface ? surfaceClasses[surface] : null;
   // In Training mode, derive flags from the multi-select set; in Match mode, from `format`.
   const isCasual = mode === "training" ? trainingFormats.includes("casual") : format === "casual";
-  const isDoubles = mode === "training" ? trainingFormats.includes("doubles") : format === "doubles";
+  const isDoubles =
+    mode === "training" ? trainingFormats.includes("doubles") : format === "doubles";
   // Casual hides the score grid entirely. In training, "casual" wins if it's selected at all.
   const showScore = !isCasual;
   const isFriendly = mode === "training" && !isCasual;
@@ -174,14 +251,12 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
   const selectedPersonName =
     opponentId === "__new__"
       ? newOpponent.trim()
-      : players.find((p) => p.id === opponentId)?.name ?? "";
-  const trainingOppAName =
-    players.find((p) => p.id === trainingOppAId)?.name ?? "";
-  const trainingOppBName =
-    players.find((p) => p.id === trainingOppBId)?.name ?? "";
+      : (players.find((p) => p.id === opponentId)?.name ?? "");
+  const trainingOppAName = players.find((p) => p.id === trainingOppAId)?.name ?? "";
+  const trainingOppBName = players.find((p) => p.id === trainingOppBId)?.name ?? "";
 
-  const meSide =
-    isDoubles && selectedPersonName ? `You & ${selectedPersonName}` : "You";
+  const meLabel = useMeLabel("You");
+  const meSide = isDoubles && selectedPersonName ? `${meLabel} & ${selectedPersonName}` : meLabel;
 
   let oppSide: string;
   if (isDoubles) {
@@ -197,10 +272,15 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
   }
 
   // Locations split into favorites vs others, filtered by visibility
-  const hiddenSet = useMemo(() => new Set(hiddenLocations.map((s) => s.toLowerCase())), [hiddenLocations]);
+  const hiddenSet = useMemo(
+    () => new Set(hiddenLocations.map((s) => s.toLowerCase())),
+    [hiddenLocations],
+  );
   const allLocations = useMemo(() => {
     const seen = new Set<string>();
-    const archived = new Set(savedLocations.filter((l) => l.isHidden).map((l) => l.name.toLowerCase()));
+    const archived = new Set(
+      savedLocations.filter((l) => l.isHidden).map((l) => l.name.toLowerCase()),
+    );
     const out: { name: string; isFavorite: boolean }[] = [];
     for (const l of savedLocations) {
       const key = l.name.toLowerCase();
@@ -242,7 +322,6 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
       ]);
     }
   }
-
 
   /**
    * Resolve the selected partner. Returns an existing Player when one is
@@ -304,7 +383,8 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
         const started = s.me != null || s.opp != null;
         return started && (s.me == null || s.opp == null);
       }
-      const a = s.me, b = s.opp;
+      const a = s.me,
+        b = s.opp;
       if (a == null || b == null) return false;
       const isTb = (a === 7 && b === 6) || (a === 6 && b === 7);
       if (!isTb) return false;
@@ -321,11 +401,12 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
   // and (when score is shown) a mathematically valid match.
   // Casual training: partner selection is optional. The user can save without one.
   const partnerOptional = mode === "training" && isCasual;
-  const partnerOk = !showPartner || partnerOptional
-    ? true
-    : opponentId === "__new__"
-      ? newOpponent.trim().length > 0
-      : !!opponentId;
+  const partnerOk =
+    !showPartner || partnerOptional
+      ? true
+      : opponentId === "__new__"
+        ? newOpponent.trim().length > 0
+        : !!opponentId;
   const locationOk = location.trim().length > 0;
   const surfaceOk = !!surface;
   const scoreOk = !showScore
@@ -356,7 +437,9 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
     try {
       // Block saves with a 7-6 / 6-7 set missing the tiebreak score.
       if (showScore && hasMissingTiebreak(sets)) {
-        setAlertMsg("Tiebreak / Super-Tiebreak is missing or inconsistent. The TB winner must match the set winner.");
+        setAlertMsg(
+          "Tiebreak / Super-Tiebreak is missing or inconsistent. The TB winner must match the set winner.",
+        );
         return;
       }
       for (const r of customResults) {
@@ -374,7 +457,9 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
       const fallbackFormat: Format = "singles";
       const safeFormats: Format[] =
         mode === "training"
-          ? (trainingFormats.length > 0 ? trainingFormats : [fallbackFormat])
+          ? trainingFormats.length > 0
+            ? trainingFormats
+            : [fallbackFormat]
           : [format || fallbackFormat];
 
       let player: Player | null = null;
@@ -389,8 +474,7 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
       // Ghost-player support: when the user typed a fresh name (opponentId === "__new__"
       // and no existing match), `player` is null but the typed name still belongs on the
       // session record so it shows up in titles, H2H labels, and friendly mirroring.
-      const ghostName =
-        opponentId === "__new__" && !player ? newOpponent.trim() : "";
+      const ghostName = opponentId === "__new__" && !player ? newOpponent.trim() : "";
       const partnerDisplayName = player?.name || ghostName || undefined;
 
       const opponentRating: OpponentRating | undefined = showRating
@@ -420,48 +504,57 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
         : [];
       const cleanIds = cleanExtras.map((e) => e!.id).filter((x): x is string => !!x);
       const cleanNames = cleanExtras.map((e) => e!.name);
+      const trainingOpponentIds = [trainingOppAId, trainingOppBId].filter(Boolean);
 
       let rawScore: Score | undefined;
-      if (showScore && isDoubles) {
+      if (mode === "training" && isDoubles) {
         rawScore = {
           opponentId: undefined,
-          opponent: (opponentsLabel.trim() || trainingOppLabel),
-          opponentsLabel: (opponentsLabel.trim() || trainingOppLabel) || undefined,
+          opponent: trainingOppLabel || opponentsLabel.trim(),
+          opponentsLabel: trainingOppLabel || opponentsLabel.trim() || undefined,
+          opponentIds: trainingOpponentIds.length > 0 ? trainingOpponentIds : undefined,
+          partnerId: player?.id,
+          partnerName: partnerDisplayName,
+          sets: showScore ? (sets.length > 0 ? sets : [{ me: null, opp: null }]) : [],
+        };
+      } else if (mode === "training") {
+        rawScore = {
+          opponent: "",
+          partnerId: player?.id,
+          partnerName: partnerDisplayName,
+          sets: showScore ? (sets.length > 0 ? sets : [{ me: null, opp: null }]) : [],
+          partnerIds: cleanIds.length > 0 ? cleanIds : undefined,
+          partnerNames: cleanNames.length > 0 ? cleanNames : undefined,
+        };
+      } else if (showScore && isDoubles) {
+        rawScore = {
+          opponentId: undefined,
+          opponent: opponentsLabel.trim(),
+          opponentsLabel: opponentsLabel.trim() || undefined,
           partnerId: player?.id,
           partnerName: partnerDisplayName,
           rating: opponentRating,
-          meRating: showRating && myClassification ? (myClassification as OpponentRating) : undefined,
+          meRating:
+            showRating && myClassification ? (myClassification as OpponentRating) : undefined,
           sets: sets.length > 0 ? sets : [{ me: null, opp: null }],
         };
       } else if (showScore) {
         rawScore = {
           opponentId: player?.id,
           opponent:
-            player?.name ??
-            ghostName ??
-            players.find((p) => p.id === opponentId)?.name ??
-            "",
+            player?.name ?? ghostName ?? players.find((p) => p.id === opponentId)?.name ?? "",
           rating: opponentRating,
-          meRating: showRating && myClassification ? (myClassification as OpponentRating) : undefined,
+          meRating:
+            showRating && myClassification ? (myClassification as OpponentRating) : undefined,
           sets: sets.length > 0 ? sets : [{ me: null, opp: null }],
-          partnerIds: cleanIds.length > 0 ? cleanIds : undefined,
-          partnerNames: cleanNames.length > 0 ? cleanNames : undefined,
-        };
-      } else if (mode === "training" && (player || ghostName || cleanIds.length > 0 || cleanNames.length > 0)) {
-        // Casual training: persist participants even without a score.
-        rawScore = {
-          opponent: "",
-          opponentId: undefined,
-          partnerId: player?.id,
-          partnerName: partnerDisplayName,
-          sets: [],
-          partnerIds: cleanIds.length > 0 ? cleanIds : undefined,
-          partnerNames: cleanNames.length > 0 ? cleanNames : undefined,
         };
       }
 
       const trimmedLocation = location.trim();
-      if (trimmedLocation && !savedLocations.some((l) => l.name.toLowerCase() === trimmedLocation.toLowerCase())) {
+      if (
+        trimmedLocation &&
+        !savedLocations.some((l) => l.name.toLowerCase() === trimmedLocation.toLowerCase())
+      ) {
         setSavedLocations([
           { id: crypto.randomUUID(), name: trimmedLocation, createdAt: new Date().toISOString() },
           ...savedLocations,
@@ -485,8 +578,8 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
           mode === "training" && customResults.length > 0
             ? customResults.map((result) => ({
                 ...result,
-                partnerId: player?.id ?? result.partnerId,
-                partnerName: partnerDisplayName ?? result.partnerName,
+                partnerId: result.partnerId ?? player?.id,
+                partnerName: result.partnerName ?? partnerDisplayName,
                 sets: result.sets.length > 0 ? result.sets : [{ me: null, opp: null }],
               }))
             : undefined,
@@ -550,7 +643,10 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
           <AnimatedTabs
             value={mode}
             onChange={(v) => setMode(v as SessionMode)}
-            tabs={[{ id: "match", label: "Match" }, { id: "training", label: "Training" }]}
+            tabs={[
+              { id: "match", label: "Match" },
+              { id: "training", label: "Training" },
+            ]}
           />
         </div>
         <button
@@ -571,98 +667,137 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
         </button>
       </div>
 
-      {/* 2. Surface — horizontal scroll pills */}
-      {/* 2. Location — horizontal scroll pills */}
-      <Section title="Location">
+      {/* 2. Location — favorites + dropdown for the rest */}
+      <Section title="Location" tight>
         <div
           ref={locationScrollRef}
-          className="flex flex-row gap-2 overflow-x-auto whitespace-nowrap pb-1 scrollbar-none -mx-1 px-1"
+          className="flex flex-row gap-2 overflow-x-auto whitespace-nowrap pb-1 scrollbar-none -mx-1 px-1 items-center"
         >
-            <button
-              type="button"
-              onClick={() => setShowLocationInput((v) => !v)}
-              className={cn(
-                "shrink-0 px-3 py-2.5 rounded-2xl border-2 text-xs font-bold transition-all flex items-center justify-center gap-1",
-                showLocationInput
-                  ? "border-optic text-optic bg-optic/10"
-                  : "border-dashed border-border text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Plus className="size-3" /> New
-            </button>
-            {[...favoriteLocations, ...otherLocations].map(({ name, isFavorite }) => {
-              const active = location === name;
-              return (
-                <button
-                  type="button"
-                  data-loc-name={name}
-                  key={name}
-                  onClick={(e) => {
-                    if (active) {
-                      // Toggle off
-                      setLocation("");
-                      return;
-                    }
-                    setLocation(name);
-                    setShowLocationInput(false);
-                    const saved = savedLocations.find(
-                      (l) => l.name.toLowerCase() === name.toLowerCase(),
-                    );
-                    if (
-                      saved?.defaultSurface &&
-                      visibleSurfaces.find((s) => s.id === saved.defaultSurface)
-                    ) {
-                      setSurface(saved.defaultSurface);
-                    }
-                    // Smooth-scroll the selected pill to the far left of the row.
-                    const container = locationScrollRef.current;
-                    const btn = e.currentTarget;
-                    if (container && btn) {
-                      const target = btn.offsetLeft - container.offsetLeft;
-                      container.scrollTo({ left: target, behavior: "smooth" });
-                    }
-                  }}
-                  className={cn(
-                    "shrink-0 px-3 py-2.5 rounded-2xl border-2 text-xs font-medium transition-all truncate flex items-center gap-1.5 max-w-[160px]",
-                    active
-                      ? "border-optic bg-optic/10 text-optic"
-                      : "border-border text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {isFavorite && (
-                    <Star className="size-3 fill-current text-optic shrink-0" />
-                  )}
-                  <span className="truncate">{name}</span>
-                </button>
-              );
-            })}
-          </div>
-          {showLocationInput && (
-            <div className="flex gap-1.5 mt-2">
-              <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                onBlur={addLocationFromInput}
-                placeholder="Add a Location"
-                className={cn(inputClass, "py-2 text-sm")}
-                autoFocus
-              />
-              {location && (
-                <button
-                  type="button"
-                  onClick={() => setLocation("")}
-                  className="size-10 rounded-xl border-2 border-border text-muted-foreground hover:text-destructive hover:border-destructive flex items-center justify-center shrink-0"
-                  aria-label="Clear location"
-                >
-                  <X className="size-3.5" />
-                </button>
-              )}
+          <button
+            type="button"
+            onClick={() => setShowLocationInput((v) => !v)}
+            className={cn(
+              "shrink-0 px-3 py-2.5 rounded-2xl border-2 text-xs font-bold transition-all flex items-center justify-center gap-1",
+              showLocationInput
+                ? "border-optic text-optic bg-optic/10"
+                : "border-dashed border-border text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Plus className="size-3" /> New
+          </button>
+          {favoriteLocations.map(({ name, isFavorite }) => {
+            const active = location === name;
+            return (
+              <button
+                type="button"
+                data-loc-name={name}
+                key={name}
+                onClick={(e) => {
+                  if (active) {
+                    setLocation("");
+                    return;
+                  }
+                  setLocation(name);
+                  setShowLocationInput(false);
+                  const saved = savedLocations.find(
+                    (l) => l.name.toLowerCase() === name.toLowerCase(),
+                  );
+                  if (
+                    saved?.defaultSurface &&
+                    visibleSurfaces.find((s) => s.id === saved.defaultSurface)
+                  ) {
+                    setSurface(saved.defaultSurface);
+                  }
+                  const container = locationScrollRef.current;
+                  const btn = e.currentTarget;
+                  if (container && btn) {
+                    const target = btn.offsetLeft - container.offsetLeft;
+                    container.scrollTo({ left: target, behavior: "smooth" });
+                  }
+                }}
+                className={cn(
+                  "shrink-0 px-3 py-2.5 rounded-2xl border-2 text-xs font-medium transition-all truncate flex items-center gap-1.5 max-w-[160px]",
+                  active
+                    ? "border-optic bg-optic/10 text-optic"
+                    : "border-border text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {isFavorite && <Star className="size-3 fill-current text-optic shrink-0" />}
+                <span className="truncate">{name}</span>
+              </button>
+            );
+          })}
+          {/* Show currently-selected non-favorite location as a pill so it's visible */}
+          {location &&
+            !favoriteLocations.some((l) => l.name === location) &&
+            otherLocations.some((l) => l.name === location) && (
+              <button
+                type="button"
+                onClick={() => setLocation("")}
+                className="shrink-0 px-3 py-2.5 rounded-2xl border-2 border-optic bg-optic/10 text-optic text-xs font-medium truncate max-w-[160px]"
+              >
+                <span className="truncate">{location}</span>
+              </button>
+            )}
+          {otherLocations.length > 0 && (
+            <div className="shrink-0 relative">
+              <select
+                value=""
+                onChange={(e) => {
+                  const name = e.target.value;
+                  if (!name) return;
+                  setLocation(name);
+                  setShowLocationInput(false);
+                  const saved = savedLocations.find(
+                    (l) => l.name.toLowerCase() === name.toLowerCase(),
+                  );
+                  if (
+                    saved?.defaultSurface &&
+                    visibleSurfaces.find((s) => s.id === saved.defaultSurface)
+                  ) {
+                    setSurface(saved.defaultSurface);
+                  }
+                }}
+                className="appearance-none px-3 pr-7 py-2.5 rounded-2xl border-2 border-border text-xs font-bold text-muted-foreground hover:text-foreground bg-card focus:outline-none cursor-pointer"
+                aria-label="More locations"
+              >
+                <option value="">More…</option>
+                {otherLocations.map(({ name }) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="size-3 text-muted-foreground absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           )}
-        </Section>
+        </div>
+        {showLocationInput && (
+          <div className="flex gap-1.5 mt-2">
+            <input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              onBlur={addLocationFromInput}
+              placeholder="Add a Location"
+              className={cn(inputClass, "py-2 text-sm")}
+              autoFocus
+            />
+            {location && (
+              <button
+                type="button"
+                onClick={() => setLocation("")}
+                className="size-10 rounded-xl border-2 border-border text-muted-foreground hover:text-destructive hover:border-destructive flex items-center justify-center shrink-0"
+                aria-label="Clear location"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+      </Section>
 
       {/* 3. Surface */}
-      <Section title="Surface">
+      <Section title="Surface" tight>
         <div className="flex flex-row gap-2 overflow-x-auto whitespace-nowrap pb-1 scrollbar-none -mx-1 px-1">
           {visibleSurfaces.map((s) => {
             const active = surface === s.id;
@@ -755,12 +890,11 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
       {/* 5. Format — Match: single-select [Singles | Doubles]. Training: multi-select [Singles | Doubles | Casual]. */}
       <Section title="Format">
         <div className="flex gap-2">
-          {((mode === "match"
+          {(mode === "match"
             ? (["singles", "doubles"] as Format[])
             : (["singles", "doubles", "casual"] as Format[])
-          )).map((f) => {
-            const active =
-              mode === "training" ? trainingFormats.includes(f) : format === f;
+          ).map((f) => {
+            const active = mode === "training" ? trainingFormats.includes(f) : format === f;
             return (
               <button
                 type="button"
@@ -793,11 +927,7 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
       {showPartner && (
         <Section
           title={
-            mode === "match"
-              ? isDoubles
-                ? "Partner & Rating"
-                : "Opponent & Rating"
-              : "Partner"
+            mode === "match" ? (isDoubles ? "Partner & Rating" : "Opponent & Rating") : "Partner"
           }
         >
           <div className={cn("grid gap-2", showRating ? "grid-cols-[1fr_110px]" : "grid-cols-1")}>
@@ -811,11 +941,7 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
                 if (id !== "__new__") setNewOpponent("");
               }}
               placeholder={
-                mode === "match"
-                  ? isDoubles
-                    ? "Add a Partner"
-                    : "Opponents"
-                  : "Add a Partner"
+                mode === "match" ? (isDoubles ? "Add a Partner" : "Opponents") : "Add a Partner"
               }
               inputClass={inputClass}
             />
@@ -828,7 +954,9 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
               >
                 <option value="">R-</option>
                 {OPPONENT_RATINGS.map((r) => (
-                  <option key={r} value={r}>{r}</option>
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
                 ))}
               </select>
             )}
@@ -875,9 +1003,7 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
                           }
                           const pl = visiblePlayers.find((p) => p.id === v);
                           setExtraPartners((prev) =>
-                            prev.map((x, i) =>
-                              i === idx ? { id: v, name: pl?.name ?? "" } : x,
-                            ),
+                            prev.map((x, i) => (i === idx ? { id: v, name: pl?.name ?? "" } : x)),
                           );
                         }}
                         placeholder="Add a Partner"
@@ -886,9 +1012,7 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
                     </div>
                     <button
                       type="button"
-                      onClick={() =>
-                        setExtraPartners((prev) => prev.filter((_, i) => i !== idx))
-                      }
+                      onClick={() => setExtraPartners((prev) => prev.filter((_, i) => i !== idx))}
                       className="size-11 rounded-xl border-2 border-border text-muted-foreground hover:text-destructive hover:border-destructive transition flex items-center justify-center shrink-0"
                       aria-label="Remove partner"
                     >
@@ -949,7 +1073,9 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
 
       {showScore && (
         <div className="flex flex-col gap-3">
-          <div className="text-xs font-bold uppercase tracking-[0.25em] text-foreground">RESULT</div>
+          <div className="text-xs font-bold uppercase tracking-[0.25em] text-foreground">
+            RESULT
+          </div>
           <ScoreGrid
             meName={meSide}
             oppName={oppSide}
@@ -975,10 +1101,13 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
                 onChange={(e) => setOpponentsLabel(e.target.value)}
                 onFocus={() => {
                   setTimeout(() => {
-                    opposingTeamRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    opposingTeamRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center",
+                    });
                   }, 200);
                 }}
-                placeholder="e.g. Tom & Jerry"
+                placeholder="Opponents"
                 className={inputClass}
               />
             </div>
@@ -997,13 +1126,14 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
               const usedElsewhere = new Set(
                 customResults.filter((x) => x.id !== r.id).map((x) => x.gameId),
               );
-              const availableGames = games.filter(
-                (gg) => !usedElsewhere.has(gg.id),
-              );
+              const availableGames = games.filter((gg) => !usedElsewhere.has(gg.id));
               const maxRows = isCum ? cumulativeMaxSets : maxSets;
               const partnerLabel = selectedPersonName || "Partner";
               return (
-                <div key={r.id} className="bg-card border border-border rounded-2xl p-3 flex flex-col gap-2.5">
+                <div
+                  key={r.id}
+                  className="bg-card border border-border rounded-2xl p-3 flex flex-col gap-2.5"
+                >
                   <div className="flex items-center gap-2">
                     <select
                       value={r.gameId}
@@ -1026,7 +1156,7 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
                     </button>
                   </div>
                   <div className="grid grid-cols-[1fr_auto_1fr_36px] items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    <span className="truncate text-center">You</span>
+                    <span className="truncate text-center">{meLabel}</span>
                     <span className="w-3" />
                     <span className="truncate text-center">{partnerLabel}</span>
                     <span />
@@ -1070,7 +1200,9 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
                           type="button"
                           onClick={() => {
                             const next = r.sets.filter((_, i) => i !== idx);
-                            updateResult(r.id, { sets: next.length > 0 ? next : [{ me: null, opp: null }] });
+                            updateResult(r.id, {
+                              sets: next.length > 0 ? next : [{ me: null, opp: null }],
+                            });
                           }}
                           className="size-9 rounded-lg border-2 border-border text-muted-foreground hover:text-destructive hover:border-destructive flex items-center justify-center"
                           aria-label="Remove set"
@@ -1159,11 +1291,20 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
   );
 }
 
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  tight = false,
+}: {
+  title: string;
+  children: React.ReactNode;
+  tight?: boolean;
+}) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{title}</div>
+    <div className={cn("flex flex-col", tight ? "gap-1" : "gap-2")}>
+      <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+        {title}
+      </div>
       {children}
     </div>
   );
@@ -1172,7 +1313,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{label}</label>
+      <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+        {label}
+      </label>
       {children}
     </div>
   );

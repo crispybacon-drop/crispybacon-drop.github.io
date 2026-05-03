@@ -4,12 +4,28 @@ import type { CustomGame, Player, Session, Format, SessionMode } from "@/lib/typ
 import { surfaceClasses, formatDuration, matchOutcome, formatStartTime } from "@/lib/surface";
 import { sessionTitle } from "@/lib/sessionTitle";
 import { cn } from "@/lib/utils";
-import { MoreVertical, X, Search, LayoutGrid, List, Clock, MapPin, Pencil, Trash2, User } from "lucide-react";
+import {
+  MoreVertical,
+  X,
+  Search,
+  LayoutGrid,
+  List,
+  Clock,
+  MapPin,
+  Pencil,
+  Trash2,
+  User,
+} from "lucide-react";
 import { SessionForm } from "./SessionForm";
 import { AnimatedTabs } from "./AnimatedTabs";
 import { useSurfaceVisibility } from "@/lib/visibleSurfaces";
 import { useDefaultSessionsView } from "@/lib/settings";
 import { useMeLabel } from "@/lib/identity";
+import {
+  sessionIncludesPlayer,
+  sessionOpponentNames,
+  sessionParticipantNames,
+} from "@/lib/participants";
 
 type LayoutMode = "list" | "grid";
 type ModeFilter = "all" | "match" | "training";
@@ -44,6 +60,12 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [defaultView] = useDefaultSessionsView();
   const [layout, setLayout] = useState<LayoutMode>(defaultView);
+  const userOverrodeLayoutRef = useRef(false);
+  // Sync layout with the user-saved default whenever it changes — unless the
+  // user has manually toggled within this session.
+  useEffect(() => {
+    if (!userOverrodeLayoutRef.current) setLayout(defaultView);
+  }, [defaultView]);
   const [query, setQuery] = useState("");
   const [modeFilter, setModeFilter] = useState<ModeFilter>("all");
   const [formatFilter, setFormatFilter] = useState<FormatFilter>("all");
@@ -65,10 +87,7 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
     );
   }
 
-  const visiblePlayers = useMemo(
-    () => players.filter((p) => !p.isArchived),
-    [players],
-  );
+  const visiblePlayers = useMemo(() => players.filter((p) => !p.isArchived), [players]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -77,35 +96,15 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
         if (dateFilter && s.date !== dateFilter) return false;
         if (modeFilter === "match" && s.mode !== ("match" as SessionMode)) return false;
         if (modeFilter === "training" && s.mode !== "training") return false;
-        if (formatFilter === "singles" && !(s.formats ?? []).includes("singles" as Format)) return false;
-        if (formatFilter === "doubles" && !(s.formats ?? []).includes("doubles" as Format)) return false;
+        if (formatFilter === "singles" && !(s.formats ?? []).includes("singles" as Format))
+          return false;
+        if (formatFilter === "doubles" && !(s.formats ?? []).includes("doubles" as Format))
+          return false;
         if (selectedPlayerIds.length > 0) {
-          const playerNames = selectedPlayerIds
-            .map((id) => players.find((p) => p.id === id)?.name?.toLowerCase())
-            .filter(Boolean) as string[];
           const matchesAny = selectedPlayerIds.some((pid) => {
-            const pname = players.find((p) => p.id === pid)?.name?.toLowerCase();
-            if (!pname) return false;
-            const sc = s.score;
-            if (sc) {
-              if (sc.opponentId === pid || sc.partnerId === pid) return true;
-              if (sc.opponent?.toLowerCase() === pname) return true;
-              if (sc.partnerName?.toLowerCase() === pname) return true;
-              if (sc.partnerIds?.includes(pid)) return true;
-              if (sc.partnerNames?.some((n) => n.toLowerCase() === pname)) return true;
-            }
-            if (
-              s.customResults?.some(
-                (r) =>
-                  r.partnerId === pid ||
-                  (r.partnerName && r.partnerName.toLowerCase() === pname),
-              )
-            ) {
-              return true;
-            }
-            return false;
+            const player = players.find((p) => p.id === pid);
+            return player ? sessionIncludesPlayer(s, player) : false;
           });
-          void playerNames;
           if (!matchesAny) return false;
         }
         if (q) {
@@ -142,11 +141,7 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
             <X className="size-5" />
           </button>
         </div>
-        <SessionForm
-          editing={editing}
-          onSaved={exitEdit}
-          onCancel={exitEdit}
-        />
+        <SessionForm editing={editing} onSaved={exitEdit} onCancel={exitEdit} />
       </div>
     );
   }
@@ -169,7 +164,11 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
             <div className="text-sm">
               <span className="text-muted-foreground">Filtered by date:</span>{" "}
               <span className="font-bold text-optic tabular-nums">
-                {new Date(dateFilter).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                {new Date(dateFilter).toLocaleDateString(undefined, {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
               </span>
             </div>
             <button
@@ -208,10 +207,15 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
           </div>
           <div className="flex bg-card border-2 border-border rounded-xl p-0.5">
             <button
-              onClick={() => setLayout("grid")}
+              onClick={() => {
+                userOverrodeLayoutRef.current = true;
+                setLayout("grid");
+              }}
               className={cn(
                 "size-10 rounded-lg flex items-center justify-center transition",
-                layout === "grid" ? "bg-optic text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                layout === "grid"
+                  ? "bg-optic text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
               aria-label="Grid view"
               aria-pressed={layout === "grid"}
@@ -219,10 +223,15 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
               <LayoutGrid className="size-4" />
             </button>
             <button
-              onClick={() => setLayout("list")}
+              onClick={() => {
+                userOverrodeLayoutRef.current = true;
+                setLayout("list");
+              }}
               className={cn(
                 "size-10 rounded-lg flex items-center justify-center transition",
-                layout === "list" ? "bg-optic text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                layout === "list"
+                  ? "bg-optic text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
               aria-label="List view"
               aria-pressed={layout === "list"}
@@ -295,12 +304,15 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
             No sessions match your filters.
           </div>
         ) : (
-          <div className={cn(layout === "grid" ? "grid grid-cols-2 gap-2.5" : "flex flex-col gap-2")}>
+          <div
+            className={cn(layout === "grid" ? "grid grid-cols-2 gap-2.5" : "flex flex-col gap-2")}
+          >
             {filtered.map((s) => (
               <SessionCard
                 key={s.id}
                 s={s}
                 games={games}
+                players={players}
                 compact={layout === "grid"}
                 onEdit={() => startEdit(s)}
                 onDelete={() => setConfirmId(s.id)}
@@ -322,7 +334,8 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
             <div>
               <div className="text-lg font-bold">Delete this session?</div>
               <div className="text-sm text-muted-foreground mt-1">
-                This will remove the session and any attached mini-game results. Stats will recalculate.
+                This will remove the session and any attached mini-game results. Stats will
+                recalculate.
               </div>
             </div>
             <div className="flex gap-2">
@@ -346,7 +359,15 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
   );
 }
 
-function MetaLine({ s, compact = false }: { s: Session; compact?: boolean }) {
+function MetaLine({
+  s,
+  players,
+  compact = false,
+}: {
+  s: Session;
+  players: Player[];
+  compact?: boolean;
+}) {
   const d = new Date(s.date);
   const dateLabel = compact
     ? `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getFullYear()).slice(-2)}`
@@ -355,8 +376,12 @@ function MetaLine({ s, compact = false }: { s: Session; compact?: boolean }) {
         month: "short",
         year: "numeric",
       });
-  const timePart = compact ? "" : (s.startTime ? ` · ${formatStartTime(s.startTime)}` : "");
-  const durationPart = compact ? "" : (s.durationMin > 0 ? ` · ${formatDuration(s.durationMin)}` : "");
+  const timePart = compact ? "" : s.startTime ? ` · ${formatStartTime(s.startTime)}` : "";
+  const durationPart = compact
+    ? ""
+    : s.durationMin > 0
+      ? ` · ${formatDuration(s.durationMin)}`
+      : "";
   return (
     <div className="flex flex-col gap-0.5 text-[11px] text-muted-foreground tabular-nums min-w-0">
       <div className="flex items-center gap-1.5 min-w-0">
@@ -374,16 +399,23 @@ function MetaLine({ s, compact = false }: { s: Session; compact?: boolean }) {
         </div>
       )}
       {(() => {
-        const names: string[] = [];
-        const sc = s.score;
-        if (sc) {
-          if (sc.partnerName) names.push(sc.partnerName);
-          if (s.mode === "training" && sc.opponent && !sc.opponentsLabel) {
-            names.push(sc.opponent);
+        let unique: string[] = [];
+        if (s.mode === "match") {
+          // Singles match: no participant line. Doubles match: show partner only.
+          if (s.formats?.includes("doubles")) {
+            const sc = s.score;
+            const partnerNames: string[] = [];
+            if (sc?.partnerName) partnerNames.push(sc.partnerName);
+            if (sc?.partnerId) {
+              const p = players.find((pl) => pl.id === sc.partnerId);
+              if (p && !partnerNames.some((n) => n.toLowerCase() === p.name.toLowerCase()))
+                partnerNames.push(p.name);
+            }
+            unique = partnerNames;
           }
-          for (const n of sc.partnerNames ?? []) names.push(n);
+        } else {
+          unique = sessionParticipantNames(s, players);
         }
-        const unique = Array.from(new Set(names.filter((n) => n && n.trim().length > 0)));
         if (unique.length === 0) return null;
         return (
           <div className="flex items-center gap-1.5 min-w-0">
@@ -416,15 +448,17 @@ function BoldScoreRow({
   sets,
   compact = false,
 }: {
-  sets: { me: number | null; opp: number | null; meTb?: number | null; oppTb?: number | null; isCtb?: boolean }[];
+  sets: {
+    me: number | null;
+    opp: number | null;
+    meTb?: number | null;
+    oppTb?: number | null;
+    isCtb?: boolean;
+  }[];
   compact?: boolean;
 }) {
   const manySets = sets.length > 2;
-  const sizeText = compact
-    ? manySets
-      ? "text-sm"
-      : "text-lg"
-    : "text-2xl";
+  const sizeText = compact ? (manySets ? "text-sm" : "text-lg") : "text-2xl";
   const cellMin = compact ? (manySets ? "min-w-[14px]" : "min-w-[18px]") : "min-w-[26px]";
   const padX = compact ? (manySets ? "px-0.5" : "px-1") : "px-1.5";
   const gap = compact ? (manySets ? "gap-0.5" : "gap-1") : "gap-1.5";
@@ -434,15 +468,20 @@ function BoldScoreRow({
         const meWin = set.me != null && set.opp != null && set.me > set.opp;
         const oppWin = set.me != null && set.opp != null && set.opp > set.me;
         const isTb =
-          !set.isCtb &&
-          ((set.me === 7 && set.opp === 6) || (set.me === 6 && set.opp === 7));
+          !set.isCtb && ((set.me === 7 && set.opp === 6) || (set.me === 6 && set.opp === 7));
         return (
           <div key={i} className="flex flex-col items-center leading-none gap-0.5">
             <span
               className={cn(
-                cellMin, padX, sizeText,
+                cellMin,
+                padX,
+                sizeText,
                 "text-center py-1 rounded-md font-display font-black",
-                meWin ? "bg-graphite text-foreground" : oppWin ? "bg-transparent text-muted-foreground" : "text-muted-foreground",
+                meWin
+                  ? "bg-graphite text-foreground"
+                  : oppWin
+                    ? "bg-transparent text-muted-foreground"
+                    : "text-muted-foreground",
               )}
             >
               {set.me ?? "-"}
@@ -452,9 +491,15 @@ function BoldScoreRow({
             </span>
             <span
               className={cn(
-                cellMin, padX, sizeText,
+                cellMin,
+                padX,
+                sizeText,
                 "text-center py-1 rounded-md font-display font-black",
-                oppWin ? "bg-graphite text-foreground" : meWin ? "bg-transparent text-muted-foreground" : "text-muted-foreground",
+                oppWin
+                  ? "bg-graphite text-foreground"
+                  : meWin
+                    ? "bg-transparent text-muted-foreground"
+                    : "text-muted-foreground",
               )}
             >
               {set.opp ?? "-"}
@@ -472,12 +517,14 @@ function BoldScoreRow({
 function SessionCard({
   s,
   games,
+  players,
   compact,
   onEdit,
   onDelete,
 }: {
   s: Session;
   games: CustomGame[];
+  players: Player[];
   compact: boolean;
   onEdit: () => void;
   onDelete: () => void;
@@ -504,7 +551,9 @@ function SessionCard({
   // Match: full SINGLES / DOUBLES
   const formats = s.formats ?? [];
   const isCasual = formats.includes("casual" as Format);
-  const orderedFormats = (["casual", "singles", "doubles"] as Format[]).filter((f) => formats.includes(f));
+  const orderedFormats = (["casual", "singles", "doubles"] as Format[]).filter((f) =>
+    formats.includes(f),
+  );
   let formatLabel: string;
   if (s.mode === "training" && compact) {
     formatLabel = isCasual ? "CASUAL" : "";
@@ -533,10 +582,7 @@ function SessionCard({
     >
       {/* Surface accent bar — thin vertical stripe on the LEFT edge */}
       {surfaceVisible && (
-        <span
-          aria-hidden
-          className={cn("absolute top-0 left-0 bottom-0 w-1", sc.bg)}
-        />
+        <span aria-hidden className={cn("absolute top-0 left-0 bottom-0 w-1", sc.bg)} />
       )}
       <div className={cn("flex flex-col flex-1 pl-2", padding)}>
         <div className="flex items-start gap-2 flex-1">
@@ -562,9 +608,16 @@ function SessionCard({
               </span>
             </div>
             {title && (
-              <div className={cn("font-bold leading-tight line-clamp-2 break-words", compact ? "text-sm" : "text-base")}>{title}</div>
+              <div
+                className={cn(
+                  "font-bold leading-tight line-clamp-2 break-words",
+                  compact ? "text-sm" : "text-base",
+                )}
+              >
+                {title}
+              </div>
             )}
-            <MetaLine s={s} compact={compact} />
+            <MetaLine s={s} players={players} compact={compact} />
           </div>
 
           <KebabMenu onEdit={onEdit} onDelete={onDelete} />
@@ -574,15 +627,28 @@ function SessionCard({
 
         {/* BOTTOM region — score LEFT, badge anchored RIGHT.
             Add right padding so the badge doesn't sit on the surface accent stripe. */}
-        <div className={cn("border-t border-border/50 flex flex-wrap items-center gap-x-2 gap-y-1.5 pr-2", compact ? "pt-1.5 mt-1.5 min-h-[40px]" : "pt-2 mt-2 min-h-[48px]")}>
+        <div
+          className={cn(
+            "border-t border-border/50 flex flex-wrap items-center gap-x-2 gap-y-1.5 pr-2",
+            compact ? "pt-1.5 mt-1.5 min-h-[40px]" : "pt-2 mt-2 min-h-[48px]",
+          )}
+        >
           {score && o ? (
             <>
               <div className="min-w-0 max-w-full overflow-hidden">
                 <BoldScoreRow sets={score.sets} compact={compact} />
               </div>
-              <div className={cn("shrink-0", compact ? "ml-auto" : "ml-auto")}>
-                <ResultBadge result={o.result} />
-              </div>
+              {(() => {
+                const hasScore = score.sets.some(
+                  (st) => (st.me ?? 0) > 0 || (st.opp ?? 0) > 0,
+                );
+                if (s.mode === "training" && !hasScore) return null;
+                return (
+                  <div className={cn("shrink-0", compact ? "ml-auto" : "ml-auto")}>
+                    <ResultBadge result={o.result} />
+                  </div>
+                );
+              })()}
             </>
           ) : (
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground/50">
@@ -593,7 +659,9 @@ function SessionCard({
 
         {!compact && s.customResults && s.customResults.length > 0 && (
           <div className="border-t border-border pt-3 mt-3 flex flex-col gap-1.5">
-            <div className="text-base font-bold uppercase tracking-widest text-muted-foreground">Mini-Games</div>
+            <div className="text-base font-bold uppercase tracking-widest text-muted-foreground">
+              Mini-Games
+            </div>
             {s.customResults.map((r) => {
               const g = games.find((x) => x.id === r.gameId);
               return (
@@ -602,7 +670,9 @@ function SessionCard({
                   name={g?.name ?? "Custom game"}
                   sets={r.sets}
                   cumulative={(g?.scoringMode ?? "match") === "cumulative"}
-                  partnerName={r.partnerName ?? s.score?.partnerName ?? s.score?.opponent ?? "Partner"}
+                  partnerName={
+                    r.partnerName ?? s.score?.partnerName ?? s.score?.opponent ?? "Partner"
+                  }
                 />
               );
             })}
@@ -610,7 +680,9 @@ function SessionCard({
         )}
 
         {!compact && s.notes && (
-          <div className="text-sm text-muted-foreground border-t border-border pt-3 mt-3">{s.notes}</div>
+          <div className="text-sm text-muted-foreground border-t border-border pt-3 mt-3">
+            {s.notes}
+          </div>
         )}
       </div>
     </div>
@@ -629,7 +701,8 @@ function MiniGameInlineRow({
   cumulative?: boolean;
 }) {
   const meLabel = useMeLabel();
-  let me = 0, opp = 0;
+  let me = 0,
+    opp = 0;
   if (cumulative) {
     me = sets.reduce((a, s) => a + (s.me ?? 0), 0);
     opp = sets.reduce((a, s) => a + (s.opp ?? 0), 0);
@@ -651,9 +724,17 @@ function MiniGameInlineRow({
       </span>
       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_minmax(0,1fr)] items-center gap-1.5 tabular-nums">
         <span className="text-muted-foreground/80 truncate text-right min-w-0">{meLabel}</span>
-        <span className={cn("font-display font-black text-base leading-none w-5 text-center", meColor)}>{me}</span>
+        <span
+          className={cn("font-display font-black text-base leading-none w-5 text-center", meColor)}
+        >
+          {me}
+        </span>
         <span className="text-muted-foreground/60 w-2 text-center">:</span>
-        <span className={cn("font-display font-black text-base leading-none w-5 text-center", oppColor)}>{opp}</span>
+        <span
+          className={cn("font-display font-black text-base leading-none w-5 text-center", oppColor)}
+        >
+          {opp}
+        </span>
         <span className="text-muted-foreground/80 truncate text-left min-w-0">{partnerName}</span>
       </div>
       <span aria-hidden />
