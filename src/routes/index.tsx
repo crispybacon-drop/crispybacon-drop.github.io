@@ -265,23 +265,14 @@ function Index() {
 }
 
 function UserIdentityChip() {
-  const [name] = useUserName();
   const [rating] = useUserRating();
-  const trimmed = name.trim();
-  if (!trimmed && !rating) return null;
+  if (!rating) return null;
+  
   return (
-    <div className="flex items-center gap-1.5 min-w-0 px-3 py-1.5 rounded-full bg-card border border-border">
-      <span className="text-sm font-bold leading-none truncate max-w-[120px]">
-        {trimmed || "—"}
+    <div className="flex items-center justify-center min-w-[48px] px-3 py-1.5 rounded-full bg-card border border-border">
+      <span className="text-[11px] font-bold tabular-nums leading-none text-optic">
+        {rating}
       </span>
-      {rating && (
-        <>
-          <span className="text-muted-foreground/60 text-xs leading-none">·</span>
-          <span className="text-[11px] font-bold tabular-nums leading-none text-optic">
-            {rating}
-          </span>
-        </>
-      )}
     </div>
   );
 }
