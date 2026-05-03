@@ -78,14 +78,32 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
   const [isInterclub, setIsInterclub] = useState(editing?.isInterclub ?? false);
   const [location, setLocation] = useState(editing?.location ?? "");
   const [showLocationInput, setShowLocationInput] = useState(false);
+  // Detect a once-only / ghost opponent: opponent name present but no Player.id link.
+  const editingGhostName = (() => {
+    const sc = editing?.score;
+    if (!sc) return "";
+    if (sc.partnerId || sc.opponentId) return "";
+    return (sc.partnerName || sc.opponent || "").trim();
+  })();
   const [opponentId, setOpponentId] = useState<string>(
-    editing?.score?.partnerId ?? editing?.score?.opponentId ?? "",
+    editing?.score?.partnerId ?? editing?.score?.opponentId ?? (editingGhostName ? "__new__" : ""),
   );
-  // Singles-training only: additional partners (rotating hitting groups).
-  const [extraPartnerIds, setExtraPartnerIds] = useState<string[]>(
-    editing?.score?.partnerIds ?? [],
-  );
-  const [newOpponent, setNewOpponent] = useState("");
+  // Singles training (incl. casual): additional partners (rotating hitting groups).
+  // Each entry can be a known player (id set) or a ghost text-only name.
+  type ExtraPartner = { id?: string; name: string };
+  const [extraPartners, setExtraPartners] = useState<ExtraPartner[]>(() => {
+    const ids = editing?.score?.partnerIds ?? [];
+    const names = editing?.score?.partnerNames ?? [];
+    const all: ExtraPartner[] = [];
+    for (let i = 0; i < Math.max(ids.length, names.length); i++) {
+      const id = ids[i];
+      const name = names[i] ?? "";
+      if (id) all.push({ id, name });
+      else if (name) all.push({ name });
+    }
+    return all;
+  });
+  const [newOpponent, setNewOpponent] = useState(editingGhostName);
   const [opponentsLabel, setOpponentsLabel] = useState(editing?.score?.opponentsLabel ?? "");
   const [rating, setRating] = useState<OpponentRating | "">(editing?.score?.rating ?? "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
@@ -104,6 +122,18 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
   const isFriendly = mode === "training" && !isCasual;
   const showPartner = true;
   const showRating = mode === "match";
+  const locationScrollRef = useRef<HTMLDivElement>(null);
+
+  // If the chosen location has a pre-defined surface, lock the surface picker.
+  const lockedSurface: Surface | null = useMemo(() => {
+    const trimmed = location.trim().toLowerCase();
+    if (!trimmed) return null;
+    const saved = savedLocations.find((l) => l.name.toLowerCase() === trimmed);
+    if (saved?.defaultSurface && visibleSurfaces.find((s) => s.id === saved.defaultSurface)) {
+      return saved.defaultSurface;
+    }
+    return null;
+  }, [location, savedLocations, visibleSurfaces]);
 
   // Final-set Champions Tiebreak rules:
   //  - Doubles: ALWAYS forced
@@ -372,41 +402,63 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
           ? [trainingOppAName, trainingOppBName].filter(Boolean).join(" & ")
           : "";
 
-      const rawScore: Score | undefined = showScore
-        ? isDoubles
-          ? {
-              opponentId: undefined,
-              opponent: (opponentsLabel.trim() || trainingOppLabel),
-              opponentsLabel: (opponentsLabel.trim() || trainingOppLabel) || undefined,
-              partnerId: player?.id,
-              partnerName: partnerDisplayName,
-              rating: opponentRating,
-              meRating: showRating && myClassification ? (myClassification as OpponentRating) : undefined,
-              sets: sets.length > 0 ? sets : [{ me: null, opp: null }],
-            }
-          : (() => {
-              const cleanExtraIds =
-                mode === "training" && !isDoubles
-                  ? extraPartnerIds.filter((id) => id && id !== player?.id)
-                  : [];
-              const cleanExtraNames = cleanExtraIds
-                .map((id) => players.find((p) => p.id === id)?.name)
-                .filter((n): n is string => !!n);
-              return {
-                opponentId: player?.id,
-                opponent:
-                  player?.name ??
-                  ghostName ??
-                  players.find((p) => p.id === opponentId)?.name ??
-                  "",
-                rating: opponentRating,
-                meRating: showRating && myClassification ? (myClassification as OpponentRating) : undefined,
-                sets: sets.length > 0 ? sets : [{ me: null, opp: null }],
-                partnerIds: cleanExtraIds.length > 0 ? cleanExtraIds : undefined,
-                partnerNames: cleanExtraNames.length > 0 ? cleanExtraNames : undefined,
-              };
-            })()
-        : undefined;
+      // Build extras (singles training/casual) — persisted regardless of score.
+      const allowExtras = mode === "training" && !isDoubles;
+      const cleanExtras = allowExtras
+        ? extraPartners
+            .map((ep) => {
+              if (ep.id && ep.id !== player?.id) {
+                const pl = players.find((p) => p.id === ep.id);
+                return pl ? { id: pl.id, name: pl.name } : null;
+              }
+              const n = ep.name.trim();
+              if (!n) return null;
+              if (player && n.toLowerCase() === player.name.toLowerCase()) return null;
+              return { id: undefined, name: n } as { id?: string; name: string };
+            })
+            .filter((x): x is { id?: string; name: string } => x !== null)
+        : [];
+      const cleanIds = cleanExtras.map((e) => e!.id).filter((x): x is string => !!x);
+      const cleanNames = cleanExtras.map((e) => e!.name);
+
+      let rawScore: Score | undefined;
+      if (showScore && isDoubles) {
+        rawScore = {
+          opponentId: undefined,
+          opponent: (opponentsLabel.trim() || trainingOppLabel),
+          opponentsLabel: (opponentsLabel.trim() || trainingOppLabel) || undefined,
+          partnerId: player?.id,
+          partnerName: partnerDisplayName,
+          rating: opponentRating,
+          meRating: showRating && myClassification ? (myClassification as OpponentRating) : undefined,
+          sets: sets.length > 0 ? sets : [{ me: null, opp: null }],
+        };
+      } else if (showScore) {
+        rawScore = {
+          opponentId: player?.id,
+          opponent:
+            player?.name ??
+            ghostName ??
+            players.find((p) => p.id === opponentId)?.name ??
+            "",
+          rating: opponentRating,
+          meRating: showRating && myClassification ? (myClassification as OpponentRating) : undefined,
+          sets: sets.length > 0 ? sets : [{ me: null, opp: null }],
+          partnerIds: cleanIds.length > 0 ? cleanIds : undefined,
+          partnerNames: cleanNames.length > 0 ? cleanNames : undefined,
+        };
+      } else if (mode === "training" && (player || ghostName || cleanIds.length > 0 || cleanNames.length > 0)) {
+        // Casual training: persist participants even without a score.
+        rawScore = {
+          opponent: "",
+          opponentId: undefined,
+          partnerId: player?.id,
+          partnerName: partnerDisplayName,
+          sets: [],
+          partnerIds: cleanIds.length > 0 ? cleanIds : undefined,
+          partnerNames: cleanNames.length > 0 ? cleanNames : undefined,
+        };
+      }
 
       const trimmedLocation = location.trim();
       if (trimmedLocation && !savedLocations.some((l) => l.name.toLowerCase() === trimmedLocation.toLowerCase())) {
@@ -522,7 +574,10 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
       {/* 2. Surface — horizontal scroll pills */}
       {/* 2. Location — horizontal scroll pills */}
       <Section title="Location">
-        <div className="flex flex-row gap-2 overflow-x-auto whitespace-nowrap pb-1 scrollbar-none -mx-1 px-1">
+        <div
+          ref={locationScrollRef}
+          className="flex flex-row gap-2 overflow-x-auto whitespace-nowrap pb-1 scrollbar-none -mx-1 px-1"
+        >
             <button
               type="button"
               onClick={() => setShowLocationInput((v) => !v)}
@@ -540,8 +595,14 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
               return (
                 <button
                   type="button"
+                  data-loc-name={name}
                   key={name}
-                  onClick={() => {
+                  onClick={(e) => {
+                    if (active) {
+                      // Toggle off
+                      setLocation("");
+                      return;
+                    }
                     setLocation(name);
                     setShowLocationInput(false);
                     const saved = savedLocations.find(
@@ -552,6 +613,13 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
                       visibleSurfaces.find((s) => s.id === saved.defaultSurface)
                     ) {
                       setSurface(saved.defaultSurface);
+                    }
+                    // Smooth-scroll the selected pill to the far left of the row.
+                    const container = locationScrollRef.current;
+                    const btn = e.currentTarget;
+                    if (container && btn) {
+                      const target = btn.offsetLeft - container.offsetLeft;
+                      container.scrollTo({ left: target, behavior: "smooth" });
                     }
                   }}
                   className={cn(
@@ -603,13 +671,21 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
               <button
                 type="button"
                 key={s.id}
-                onClick={() => setSurface(s.id)}
+                disabled={!!lockedSurface && lockedSurface !== s.id}
+                onClick={() => {
+                  if (lockedSurface) return;
+                  setSurface(s.id);
+                }}
                 className={cn(
                   "shrink-0 px-3 py-2 rounded-full border-2 text-xs font-bold transition-all flex items-center gap-1.5",
                   active
                     ? `${ssc.border} ${ssc.bgSoft} text-foreground`
                     : "border-border text-muted-foreground hover:text-foreground",
+                  !!lockedSurface && lockedSurface !== s.id && "opacity-30 cursor-not-allowed",
+                  !!lockedSurface && lockedSurface === s.id && "cursor-default",
                 )}
+                aria-disabled={!!lockedSurface && lockedSurface !== s.id}
+                title={lockedSurface ? "Locked by location's default surface" : undefined}
               >
                 <span className={cn("size-2.5 rounded-full shrink-0", ssc.dot)} />
                 <span>{s.label}</span>
@@ -758,39 +834,60 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
             )}
           </div>
 
-          {mode === "training" && !isDoubles && !isCasual && (
+          {mode === "training" && !isDoubles && (
             <div className="flex flex-col gap-2 mt-2">
-              {extraPartnerIds.map((pid, idx) => {
+              {extraPartners.map((ep, idx) => {
                 const taken = new Set<string>([
                   opponentId,
-                  ...extraPartnerIds.filter((_, i) => i !== idx),
+                  ...extraPartners
+                    .filter((_, i) => i !== idx)
+                    .map((x) => x.id ?? "")
+                    .filter(Boolean),
                 ]);
+                const availablePlayers = visiblePlayers.filter(
+                  (p) => !taken.has(p.id) || p.id === ep.id,
+                );
+                const pickerValue = ep.id ? ep.id : ep.name ? "__new__" : "";
                 return (
                   <div key={idx} className="flex gap-2">
-                    <select
-                      value={pid}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setExtraPartnerIds((prev) =>
-                          prev.map((x, i) => (i === idx ? v : x)),
-                        );
-                      }}
-                      className={cn(inputClass, "flex-1")}
-                      aria-label={`Additional partner ${idx + 2}`}
-                    >
-                      <option value="">Add a Partner</option>
-                      {visiblePlayers
-                        .filter((p) => !taken.has(p.id) || p.id === pid)
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                    </select>
+                    <div className="flex-1 min-w-0">
+                      <InPlacePlayerPicker
+                        players={availablePlayers}
+                        value={pickerValue}
+                        newName={ep.id ? "" : ep.name}
+                        onChangeNewName={(v) =>
+                          setExtraPartners((prev) =>
+                            prev.map((x, i) => (i === idx ? { id: undefined, name: v } : x)),
+                          )
+                        }
+                        onChange={(v) => {
+                          if (v === "__new__") {
+                            setExtraPartners((prev) =>
+                              prev.map((x, i) => (i === idx ? { id: undefined, name: "" } : x)),
+                            );
+                            return;
+                          }
+                          if (!v) {
+                            setExtraPartners((prev) =>
+                              prev.map((x, i) => (i === idx ? { id: undefined, name: "" } : x)),
+                            );
+                            return;
+                          }
+                          const pl = visiblePlayers.find((p) => p.id === v);
+                          setExtraPartners((prev) =>
+                            prev.map((x, i) =>
+                              i === idx ? { id: v, name: pl?.name ?? "" } : x,
+                            ),
+                          );
+                        }}
+                        placeholder="Add a Partner"
+                        inputClass={inputClass}
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={() =>
-                        setExtraPartnerIds((prev) => prev.filter((_, i) => i !== idx))
+                        setExtraPartners((prev) => prev.filter((_, i) => i !== idx))
                       }
                       className="size-11 rounded-xl border-2 border-border text-muted-foreground hover:text-destructive hover:border-destructive transition flex items-center justify-center shrink-0"
                       aria-label="Remove partner"
@@ -802,7 +899,7 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
               })}
               <button
                 type="button"
-                onClick={() => setExtraPartnerIds((prev) => [...prev, ""])}
+                onClick={() => setExtraPartners((prev) => [...prev, { id: undefined, name: "" }])}
                 className="self-start text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground flex items-center gap-1.5"
               >
                 <Plus className="size-3.5" /> Add another partner
@@ -903,13 +1000,15 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
               const availableGames = games.filter(
                 (gg) => !usedElsewhere.has(gg.id),
               );
+              const maxRows = isCum ? cumulativeMaxSets : maxSets;
+              const partnerLabel = selectedPersonName || "Partner";
               return (
-                <div key={r.id} className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-3">
+                <div key={r.id} className="bg-card border border-border rounded-2xl p-3 flex flex-col gap-2.5">
                   <div className="flex items-center gap-2">
                     <select
                       value={r.gameId}
                       onChange={(e) => updateResult(r.id, { gameId: e.target.value })}
-                      className="flex-1 bg-background border-2 border-border rounded-lg px-3 py-2.5 text-sm font-medium focus:outline-none focus:border-optic"
+                      className="flex-1 bg-background border-2 border-border rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:border-optic"
                     >
                       {availableGames.map((gg) => (
                         <option key={gg.id} value={gg.id}>
@@ -920,35 +1019,79 @@ export function SessionForm({ onSaved, onCancel, editing }: Props) {
                     <button
                       type="button"
                       onClick={() => removeResult(r.id)}
-                      className="size-9 rounded-full bg-muted text-muted-foreground hover:text-destructive flex items-center justify-center"
+                      className="size-9 rounded-full bg-muted text-muted-foreground hover:text-destructive flex items-center justify-center shrink-0"
                       aria-label="Remove"
                     >
                       <Trash2 className="size-4" />
                     </button>
                   </div>
-                  {isCum ? (
-                    <ScoreGrid
-                      meName="You"
-                      oppName={selectedPersonName || "Partner"}
-                      sets={r.sets}
-                      onChange={(next) => updateResult(r.id, { sets: next })}
-                      accentClass={sc?.border ?? ""}
-                      accentText={sc?.text ?? ""}
-                      maxSets={cumulativeMaxSets}
-                      colorScheme="training"
-                      disableValidation
-                    />
-                  ) : (
-                    <ScoreGrid
-                      meName="You"
-                      oppName={selectedPersonName || "Partner"}
-                      sets={r.sets}
-                      onChange={(next) => updateResult(r.id, { sets: next })}
-                      accentClass={sc?.border ?? ""}
-                      accentText={sc?.text ?? ""}
-                      maxSets={maxSets}
-                      colorScheme="training"
-                    />
+                  <div className="grid grid-cols-[1fr_auto_1fr_36px] items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    <span className="truncate text-center">You</span>
+                    <span className="w-3" />
+                    <span className="truncate text-center">{partnerLabel}</span>
+                    <span />
+                  </div>
+                  {r.sets.map((set, idx) => (
+                    <div
+                      key={idx}
+                      className="grid grid-cols-[1fr_auto_1fr_36px] items-center gap-1.5"
+                    >
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={set.me ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/\D/g, "");
+                          const next = [...r.sets];
+                          next[idx] = { ...next[idx], me: v === "" ? null : Number(v) };
+                          updateResult(r.id, { sets: next });
+                        }}
+                        placeholder="0"
+                        className={cn(inputClass, "py-2 text-center tabular-nums font-bold")}
+                      />
+                      <span className="text-muted-foreground font-bold w-3 text-center">:</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={set.opp ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/\D/g, "");
+                          const next = [...r.sets];
+                          next[idx] = { ...next[idx], opp: v === "" ? null : Number(v) };
+                          updateResult(r.id, { sets: next });
+                        }}
+                        placeholder="0"
+                        className={cn(inputClass, "py-2 text-center tabular-nums font-bold")}
+                      />
+                      {r.sets.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = r.sets.filter((_, i) => i !== idx);
+                            updateResult(r.id, { sets: next.length > 0 ? next : [{ me: null, opp: null }] });
+                          }}
+                          className="size-9 rounded-lg border-2 border-border text-muted-foreground hover:text-destructive hover:border-destructive flex items-center justify-center"
+                          aria-label="Remove set"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      ) : (
+                        <span />
+                      )}
+                    </div>
+                  ))}
+                  {r.sets.length < maxRows && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateResult(r.id, { sets: [...r.sets, { me: null, opp: null }] })
+                      }
+                      className="self-start text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-optic flex items-center gap-1.5"
+                    >
+                      <Plus className="size-3.5" /> Add set
+                    </button>
                   )}
                 </div>
               );

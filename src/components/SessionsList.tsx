@@ -4,7 +4,7 @@ import type { CustomGame, Player, Session, Format, SessionMode } from "@/lib/typ
 import { surfaceClasses, formatDuration, matchOutcome, formatStartTime } from "@/lib/surface";
 import { sessionTitle } from "@/lib/sessionTitle";
 import { cn } from "@/lib/utils";
-import { MoreVertical, X, Search, LayoutGrid, List, Clock, MapPin, Pencil, Trash2 } from "lucide-react";
+import { MoreVertical, X, Search, LayoutGrid, List, Clock, MapPin, Pencil, Trash2, User } from "lucide-react";
 import { SessionForm } from "./SessionForm";
 import { AnimatedTabs } from "./AnimatedTabs";
 import { useSurfaceVisibility } from "@/lib/visibleSurfaces";
@@ -86,10 +86,14 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
           const matchesAny = selectedPlayerIds.some((pid) => {
             const pname = players.find((p) => p.id === pid)?.name?.toLowerCase();
             if (!pname) return false;
-            if (s.score?.opponentId === pid) return true;
-            if (s.score?.partnerId === pid) return true;
-            if (s.score?.opponent?.toLowerCase() === pname) return true;
-            if (s.score?.partnerName?.toLowerCase() === pname) return true;
+            const sc = s.score;
+            if (sc) {
+              if (sc.opponentId === pid || sc.partnerId === pid) return true;
+              if (sc.opponent?.toLowerCase() === pname) return true;
+              if (sc.partnerName?.toLowerCase() === pname) return true;
+              if (sc.partnerIds?.includes(pid)) return true;
+              if (sc.partnerNames?.some((n) => n.toLowerCase() === pname)) return true;
+            }
             if (
               s.customResults?.some(
                 (r) =>
@@ -110,6 +114,7 @@ export function SessionsList({ initialDateFilter = null, onClearDateFilter }: Pr
             s.score?.opponent ?? "",
             s.score?.partnerName ?? "",
             s.score?.opponentsLabel ?? "",
+            ...(s.score?.partnerNames ?? []),
             s.notes ?? "",
             s.surface,
             s.mode,
@@ -368,6 +373,25 @@ function MetaLine({ s, compact = false }: { s: Session; compact?: boolean }) {
           <span className="truncate">{s.location}</span>
         </div>
       )}
+      {(() => {
+        const names: string[] = [];
+        const sc = s.score;
+        if (sc) {
+          if (sc.partnerName) names.push(sc.partnerName);
+          if (s.mode === "training" && sc.opponent && !sc.opponentsLabel) {
+            names.push(sc.opponent);
+          }
+          for (const n of sc.partnerNames ?? []) names.push(n);
+        }
+        const unique = Array.from(new Set(names.filter((n) => n && n.trim().length > 0)));
+        if (unique.length === 0) return null;
+        return (
+          <div className="flex items-center gap-1.5 min-w-0">
+            <User className="size-3 shrink-0" />
+            <span className="truncate">{unique.join(", ")}</span>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -577,6 +601,7 @@ function SessionCard({
                   key={r.id}
                   name={g?.name ?? "Custom game"}
                   sets={r.sets}
+                  cumulative={(g?.scoringMode ?? "match") === "cumulative"}
                   partnerName={r.partnerName ?? s.score?.partnerName ?? s.score?.opponent ?? "Partner"}
                 />
               );
@@ -596,23 +621,24 @@ function MiniGameInlineRow({
   name,
   sets,
   partnerName,
+  cumulative = false,
 }: {
   name: string;
   sets: { me: number | null; opp: number | null }[];
   partnerName: string;
+  cumulative?: boolean;
 }) {
   const meLabel = useMeLabel();
-  // Compute aggregate: sum of sets won (or numeric sum for cumulative-like)
   let me = 0, opp = 0;
-  for (const set of sets) {
-    if (set.me == null || set.opp == null) continue;
-    if (set.me > set.opp) me++;
-    else if (set.opp > set.me) opp++;
-  }
-  // Fallback to raw totals if no decided sets
-  if (me === 0 && opp === 0) {
+  if (cumulative) {
     me = sets.reduce((a, s) => a + (s.me ?? 0), 0);
     opp = sets.reduce((a, s) => a + (s.opp ?? 0), 0);
+  } else {
+    for (const set of sets) {
+      if (set.me == null || set.opp == null) continue;
+      if (set.me > set.opp) me++;
+      else if (set.opp > set.me) opp++;
+    }
   }
   const meWin = me > opp;
   const oppWin = opp > me;

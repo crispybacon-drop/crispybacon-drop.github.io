@@ -217,21 +217,21 @@ export function PlayersPanel({ embedded = false, onOpenGamesForPlayer, editMode 
 
       {(() => {
         const renderRow = (p: Player) => {
-          const friendlies = sessions.filter(
-            (s) =>
-              s.mode === "training" &&
-              s.score &&
-              s.score.sets.some((set) => set.me != null || set.opp != null) &&
-              (s.score.partnerId === p.id ||
-                s.score.opponentId === p.id ||
-                s.score.partnerName === p.name ||
-                s.score.opponent === p.name ||
-                (s.score.partnerIds?.includes(p.id) ?? false) ||
-                (s.score.partnerNames?.includes(p.name) ?? false)),
-          );
+          const friendlies = sessions.filter((s) => {
+            const sc = s.score;
+            if (sc) {
+              if (sc.partnerId === p.id || sc.opponentId === p.id) return true;
+              if (sc.partnerName === p.name || sc.opponent === p.name) return true;
+              if (sc.partnerIds?.includes(p.id)) return true;
+              if (sc.partnerNames?.includes(p.name)) return true;
+            }
+            if (s.customResults?.some((r) => r.partnerId === p.id || r.partnerName === p.name)) return true;
+            return false;
+          });
           let w = 0, l = 0;
           for (const s of friendlies) {
-            const o = matchOutcome(s.score!.sets);
+            if (!s.score) continue;
+            const o = matchOutcome(s.score.sets);
             if (o.result === "win") w++;
             else if (o.result === "loss") l++;
           }
